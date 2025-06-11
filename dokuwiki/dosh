@@ -5,6 +5,8 @@
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
+source lib/util.sh
+
 install() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
@@ -20,25 +22,6 @@ install() {
     popd > /dev/null
 }
 
-
-push() {
-    # Usage: push hostname
-
-    cd ${BASEDIR}
-    local dirname=$(basename "${BASEDIR}")
-    local dest="$1:/opt/${dirname}/"
-
-    echo Copying local files to $dest
-    rsync -avz --progress \
-        --exclude='.env/' \
-        --exclude='.git/' \
-        --exclude='.gitignore' \
-        --exclude='.gitmodules' \
-        --exclude='.gitattributes' \
-        --exclude='*.swp' \
-        --exclude='.DS_Store' \
-        ./ "root@$dest"
-}
 
 uninstall() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
