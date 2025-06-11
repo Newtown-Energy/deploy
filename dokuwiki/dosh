@@ -22,6 +22,34 @@ install() {
     popd > /dev/null
 }
 
+install-caddy() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    [ -f .env ] || cp env.example .env
+
+    _apt-get-update
+    _apt-get-install caddy gettext-base
+
+    # Pull in our .env values if they exist
+    set -a # automatically export all variables
+    source .env
+    set +a # stop automatically exporting
+    [ -z "$FQDN" ] && { echo "Error: FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$DESTIP" ] && { echo "Error: DESTIP isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/dokuwiki.caddyfile | envsubst > available/dokuwiki.caddyfile
+
+    cd enabled
+    ln -sf ../available/dokuwiki.caddyfile dokuwiki.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+}
 
 uninstall() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
