@@ -1,0 +1,262 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+_apt-get-install() {
+    DPKG=`dpkg -l`
+    packages=("$@")
+    for file in "${packages[@]}"; do
+        if ! echo "$DPKG" | grep -qF "$file"; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y $@
+            break
+        fi
+    done
+}
+
+_apt-get-update() {
+    # Usage: apt_update_if_needed [max_age_hours] (default: 24)
+    local max_age_hours=${1:-24}
+    local last_update
+    local current_time
+    local time_diff
+
+    # Get last update time (in seconds since epoch)
+    last_update=$(stat -c %Y /var/lib/apt/periodic/update-success-stamp 2>/dev/null || \
+                  stat -c %Y /var/lib/apt/lists/ 2>/dev/null || \
+                  echo 0)
+
+    current_time=$(date +%s)
+    time_diff=$(( (current_time - last_update) / 3600 ))  # Convert to hours
+
+    if [ "$time_diff" -ge "$max_age_hours" ]; then
+        echo "APT last updated ${time_diff} hours ago. Running apt-get update..."
+        apt-get update -qq
+        touch /var/lib/apt/periodic/update-success-stamp
+        echo "APT package lists updated"
+    else
+        echo "APT updated recently (${time_diff} hours ago). Skipping."
+    fi
+}
+
+_get_env_value() {
+    # Usage: get_env_value "VAR_NAME"
+    local var_name="$1"
+    local env_file=".env"
+
+    if [ ! -f "$env_file" ]; then
+	cp env.example .env
+    fi
+
+    # Read the line, trim whitespace, handle quoted values and comments
+    local value
+    if value=$(grep -E "^[[:space:]]*${var_name}[[:space:]]*=" "$env_file" | \
+               tail -1 | \
+               cut -d '=' -f2- | \
+               sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//'); then
+        echo "$value"
+    else
+        echo "Error: Variable $var_name not found in $env_file" >&2
+        return 1
+    fi
+}
+
+_git_clone() {
+   # clone or update git repo
+   # 2 params: repo url and dest dir
+   mkdir -p "$2"
+   if ! [ -d "$2/.git" ]; then
+      git clone "$1" "$2"
+   else
+      pushd "$2" > /dev/null
+      git fetch
+      git rebase origin
+      popd > /dev/null
+   fi
+}
+
+_replace_or_add_line() {
+    # Usage: _replace_or_add_line "file" "pattern" "new_line"
+    local file="$1"
+    local pattern="$2"
+    local new_line="$3"
+   
+    # Process the file
+    if grep -q "$pattern" "$file"; then
+        # Special handling for ^ start anchor
+        if [[ "$pattern" == ^* ]]; then
+            # Remove ^ for the replacement pattern
+            local sed_pattern="${pattern#^}"
+            sed -i -E "0,/^${sed_pattern}/s|^${sed_pattern}.*|$new_line|" "$file"
+        else
+            # Normal replacement
+            sed -i -E "s|${pattern}.*|$new_line|" "$file"
+        fi
+    else
+        # Append new line
+        echo "$new_line" >> "$file"
+    fi
+    
+}
+
+config(){
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    # Read .env file and grab some vars
+    local NETNAME=$(_get_env_value "NETNAME" noempty)
+    [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
+    local IP=$(_get_env_value "IP" noempty) # should be in 10.14.0.0/16
+    [ -z "$IP" ] && { echo "Error: IP isn't specified in .env" >&2; exit 1; }
+    local HOSTNAME=$(_get_env_value "HOSTNAME" noempty) # should be in 10.14.0.0/16
+    [ -z "$HOSTNAME" ] && { echo "Error: HOSTNAME isn't specified in .env" >&2; exit 1; }
+    local SUBNET=$(_get_env_value "SUBNET" noempty) # should be in 10.14.0.0/16
+    [ -z "$SUBNET" ] && { echo "Error: SUBNET isn't specified in .env" >&2; exit 1; }
+
+    hosts
+
+    pushd /etc/tinc/$NETNAME > /dev/null
+    
+    # Generate key
+    mkdir -p hosts
+    if ! [ -f rsa_key.priv ]; then
+	if [ -f hosts/$HOSTNAME ]; then
+	    echo "ERROR: hosts/$HOSTNAME already exists. Please remove it from here and the repo." >&2
+	    exit 1
+	fi
+	echo Generating key...
+	/usr/local/sbin/tinc -n $NETNAME init $HOSTNAME
+	/usr/local/sbin/tinc -n $NETNAME add Subnet $IP/32
+    fi
+
+    echo "#!/bin/sh" > tinc-up
+    echo "IP=\"$IP\"" >> tinc-up
+    echo "SUBNET=\"$SUBNET\"" >> tinc-up
+    echo 'ip link set $INTERFACE up' >> tinc-up
+    echo 'ip addr add $IP dev $INTERFACE' >> tinc-up
+    echo 'ip route add $SUBNET dev $INTERFACE' >> tinc-up
+    chmod +x tinc-up
+
+    echo "#!/bin/sh" > tinc-down
+    echo "IP=\"$IP\"" >> tinc-down
+    echo "SUBNET=\"$SUBNET\"" >> tinc-down
+    #echo "SUBNET=\"10.1.0.0/16\"" >> tinc-down
+    echo 'ip route del $SUBNET dev $INTERFACE' >> tinc-down
+    echo 'ip addr del $IP dev $INTERFACE' >> tinc-down
+    echo 'ip link set $INTERFACE down' >> tinc-down
+    chmod +x tinc-down
+
+    _replace_or_add_line tinc.conf "^ *LocalDiscovery *=" "LocalDiscovery = yes"
+
+    popd > /dev/null
+
+    systemctl enable --now tinc\@NETNAME
+}
+
+hosts() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    # Read .env file and grab some vars
+    local NETNAME=$(_get_env_value "NETNAME" noempty)
+    [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
+
+    # Generate key
+    mkdir -p /etc/tinc/$NETNAME/hosts
+    cp -r hosts /etc/tinc/$NETNAME
+}
+
+install() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    if [[ -e /etc/tinc ]] && [[ ! -L /etc/tinc || "$(readlink -f /etc/tinc)" != "/usr/local/etc/tinc" ]]; then
+	echo "ERROR: /etc/tinc exists but is not a symlink to /usr/local/etc/tinc" >&2
+	echo "That implies there is another tinc install.  Please fix! Deal with the" >&2
+	echo "other install, then either remove it or make it a proper symlink:" >&2
+	echo "  sudo rm -rf /etc/tinc && sudo ln -s /usr/local/etc/tinc /etc/tinc" >&2
+	exit 1
+    fi
+
+    # Install tinc 1.1
+    local URL=https://github.com/gsliepen/tinc.git
+    local DESTDIR=/opt/tinc/src
+    mkdir -p $DESTDIR
+
+    _apt-get-update
+    _apt-get-install git meson ninja-build pkg-config build-essential libssl-dev libncurses-dev
+    _apt-get-install libreadline-dev zlib1g-dev liblzo2-dev liblz4-dev texinfo diffutils procps socat netcat-openbsd
+
+    _git_clone $URL ${DESTDIR}
+    pushd ${DESTDIR} > /dev/null
+    meson setup builddir
+    meson compile -C builddir
+    meson install -C builddir
+
+    # setup systemd scripts
+    pushd /etc/systemd/system > /dev/null
+    cp $DESTDIR/systemd/tinc.service.in tinc.service
+    sed -i 's/^WorkingDirectory=.*/WorkingDirectory=\/etc\/tinc/' tinc.service
+    cp $DESTDIR/systemd/tinc\@.service.in tinc\@.service
+    #sed -i 's/\@sbindir\@/\/usr\/local\/sbin/' tinc\@.service
+    sed -i 's/\@sysconfdir\@/\/etc/' tinc\@.service
+    sed -i 's/^Type=.*/Type=simple/' tinc\@.service
+    sed -i 's/^ExecStart=.*/ExecStart=\/usr\/local\/sbin\/tincd -c \/etc\/tinc\/\%i --pidfile=\/var\/local\/run\/tinc -D/' tinc\@.service
+    sed -i 's/^ExecReload=.*/ExecReload=\/usr\/local\/sbin\/tincd -c \/etc\/tinc\/\%i --pidfile=\/var\/local\/run\/tinc -kHUP/' tinc\@.service
+    _replace_or_add_line tinc\@.service "^ *WatchdogSec=" ""
+    systemctl daemon-reload
+    popd > /dev/null
+
+    # tinc 1.1 compiled from source wants to use /usr/local/etc/tinc, but debian expects it in /etc/tinc.
+    mkdir -p /usr/local/etc/tinc
+    ln -sf /usr/local/etc/tinc /etc/tinc
+    mkdir -p /var/local/run
+
+    popd > /dev/null
+}
+
+
+push() {
+    # Usage: push hostname
+
+    cd ${BASEDIR}
+    local dirname=$(basename "${BASEDIR}")
+    local dest="$1:/opt/${dirname}/"
+
+    echo Copying local files to $dest
+    rsync -avz --progress \
+        --exclude='.env/' \
+        --exclude='.git/' \
+        --exclude='.gitignore' \
+        --exclude='.gitmodules' \
+        --exclude='.gitattributes' \
+        --exclude='*.swp' \
+        --exclude='.DS_Store' \
+        ./ "root@$dest"
+}
+
+uninstall() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    # Remove systemd scripts
+    pushd /etc/systemd/system > /dev/null
+    rm -f tinc.service tinc\@.service
+    popd > /dev/null
+
+    # Remove tinc
+    rm -rf /usr/local/sbin/tinc* /usr/local/etc/tinc /etc/tinc /var/local/run/tinc
+
+    # Remove source directory
+    rm -rf /opt/tinc/src
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
