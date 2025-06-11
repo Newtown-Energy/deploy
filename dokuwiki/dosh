@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+install() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    pushd /etc/systemd/system > /dev/null
+    cp $BASEDIR/dokuwiki.service dokuwiki.service
+    systemctl daemon-reload
+    popd > /dev/null
+
+    systemctl enable --now dokuwiki
+
+    popd > /dev/null
+}
+
+
+push() {
+    # Usage: push hostname
+
+    cd ${BASEDIR}
+    local dirname=$(basename "${BASEDIR}")
+    local dest="$1:/opt/${dirname}/"
+
+    echo Copying local files to $dest
+    rsync -avz --progress \
+        --exclude='.env/' \
+        --exclude='.git/' \
+        --exclude='.gitignore' \
+        --exclude='.gitmodules' \
+        --exclude='.gitattributes' \
+        --exclude='*.swp' \
+        --exclude='.DS_Store' \
+        ./ "root@$dest"
+}
+
+uninstall() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    # Remove systemd scripts
+    pushd /etc/systemd/system > /dev/null
+    rm -f tinc.service tinc\@.service
+    popd > /dev/null
+
+    echo Removed systemd integration.  Not removing data or docker containers.
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
