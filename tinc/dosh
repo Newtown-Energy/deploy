@@ -12,6 +12,8 @@ config(){
 
     cd ${BASEDIR}
 
+    [ -f .env ] || cp env.example .env
+
     # Read .env file and grab some vars
     local NETNAME=$(_get_env_value "NETNAME" noempty)
     [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
