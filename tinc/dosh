@@ -61,7 +61,7 @@ config(){
 
     popd > /dev/null
 
-    systemctl enable --now tinc\@NETNAME
+    systemctl enable --now tinc\@$NETNAME
 }
 
 hosts() {
