@@ -66,6 +66,11 @@ _apt-get-update() {
     fi
 }
 
+# Check that a variable isn't empty. Do this after loading .env 
+_check_exists() {
+    [ -z "${!1}" ] && { echo "Error: $1 isn't specified in .env" >&2; exit 1; }
+}
+
 _get_env_value() {
     # Usage: get_env_value "VAR_NAME"
     local var_name="$1"
@@ -102,6 +107,15 @@ _git_clone() {
    fi
 }
 
+_load_env() {
+    # Load environment variables from .env file
+    if [ -f .env ]; then
+	set -a # automatically export all variables
+	source .env
+	set +a # stop automatically exporting
+    fi
+}
+
 _replace_or_add_line() {
     # Usage: _replace_or_add_line "file" "pattern" "new_line"
     local file="$1"
@@ -135,7 +149,7 @@ push() {
 
     echo Copying local files to $dest
     rsync -rLvz --progress \
-        --exclude='.env/' \
+        --exclude='.env' \
         --exclude='.git/' \
         --exclude='.gitignore' \
         --exclude='.gitmodules' \
