@@ -1,0 +1,16 @@
+[Unit]
+Description=Vault Warden
+After=network.target
+
+[Service]
+Type=simple
+#User=dokuwiki
+#Group=dokuwiki
+WorkingDirectory=/opt/vaultwarden
+ExecStart=docker run --rm --name vaultwarden --env DOMAIN="https://pw.newtown.energy" --volume /opt/vaultwarden/data/:/data/ --publish 8091:80 vaultwarden/server:latest
+ExecStop=docker stop vaultwarden
+Restart=always 
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+source lib/util.sh
+
+install() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    docker pull vaultwarden/server:latest
+
+    ln -sf $BASEDIR/vaultwarden.service /etc/systemd/system/vaultwarden.service
+    systemctl daemon-reload
+    systemctl enable --now vaultwarden
+
+}
+
+install-caddy() {
+    # This one shoule be run on newtown.energy, not bromine.newtown.energy
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    [ -f .env ] || cp env.example .env
+
+    _apt-get-update
+    _apt-get-install caddy gettext-base
+
+    # Pull in our .env values if they exist
+    set -a # automatically export all variables
+    source .env
+    set +a # stop automatically exporting
+    [ -z "$FQDN" ] && { echo "Error: FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$DESTIP" ] && { echo "Error: DESTIP isn't specified in .env" >&2; exit 1; }
+    [ -z "$PORT" ] && { echo "Error: PORT isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/vaultwarden.caddyfile | envsubst > available/vaultwarden.caddyfile
+
+    cd enabled
+    ln -sf ../available/vaultwarden.caddyfile vaultwarden.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+}
+
+uninstall() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    cd ${BASEDIR}
+
+    # Remove systemd scripts
+    systemctl disable --now vaultwarden
+    rm -f /etc/systemd/system/vaultwarden.service
+
+    echo Removed systemd integration.  Not removing data or docker containers.
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
