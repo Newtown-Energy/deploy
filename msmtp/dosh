@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+source lib/util.sh
+
+_load_env
+
+install() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    _apt-get-update
+    _apt-get-install msmtp msmtp-mta 
+
+    # Make sure we have our .env values 
+    _check_exists "SMTP_SERVER"
+    _check_exists "USERNAME"
+    _check_exists "PASSWORD"
+    _check_exists "PORT"
+
+    # On the remote, if you run `msmtp --version`, it will tell you
+    # the name of the system configuration file.  In this case, it is
+    # /etc/msmtprc.
+    cat ${BASEDIR}/msmtprc | envsubst > /etc/msmtprc
+
+    # I've never quite understood why sendmail is limited to sbin, but we don't need that.
+    ln -sf /usr/bin/msmtp /usr/bin/sendmail
+    
+    touch /var/log/msmtp.log
+    chmod 666 /var/log/msmtp.log
+
+    ln -sf ${BASEDIR}/msmtpd.service /etc/systemd/system/msmtpd.service
+    systemctl daemon-reload
+    systemctl enable --now msmtpd
+}
+
+uninstall() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+
+    apt-get purge -y msmtp msmtp-mta 
+    apt-get autoremove -y
+
+    rm -f /etc/msmtprc 
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+

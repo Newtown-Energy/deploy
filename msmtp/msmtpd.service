@@ -1,0 +1,16 @@
+[Unit]
+Description=msmtpd
+After=network.target
+
+[Service]
+Type=simple
+#User=msmtpd
+#Group=msmtpd
+WorkingDirectory=/opt/msmtp
+EnvironmentFile=/opt/msmtp/.env
+ExecStart=msmtpd --log=/var/log/msmtpd --interface=${LISTEN_INTERFACE}
+Restart=always 
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
