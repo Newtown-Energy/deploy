@@ -4,7 +4,7 @@
 #
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
+cd ${BASEDIR}
 source lib/util.sh
 _load_env
 
@@ -26,8 +26,6 @@ install() {
 install-caddy() {
     # This one shoule be run on newtown.energy, not bromine.newtown.energy
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     [ -f .env ] || cp env.example .env
 
@@ -53,8 +51,6 @@ install-caddy() {
 
 uninstall() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     # Remove systemd scripts
     systemctl disable --now vaultwarden

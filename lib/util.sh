@@ -109,10 +109,13 @@ _git_clone() {
 
 _load_env() {
     # Load environment variables from .env file
+
     if [ -f .env ]; then
 	set -a # automatically export all variables
 	source .env
 	set +a # stop automatically exporting
+    else
+        cp env.example .env
     fi
 }
 

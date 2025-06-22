@@ -4,40 +4,27 @@
 #
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
+cd ${BASEDIR}
 source lib/util.sh
+_load_env
 
 install() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
-    cd ${BASEDIR}
-
-    pushd /etc/systemd/system > /dev/null
-    cp $BASEDIR/dokuwiki.service dokuwiki.service
+    cp $BASEDIR/dokuwiki.service /etc/systemd/system/dokuwiki.service
     systemctl daemon-reload
-    popd > /dev/null
-
     systemctl enable --now dokuwiki
-
-    popd > /dev/null
 }
 
 install-caddy() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
-    cd ${BASEDIR}
-
-    [ -f .env ] || cp env.example .env
-
     _apt-get-update
     _apt-get-install caddy gettext-base
 
     # Pull in our .env values if they exist
-    set -a # automatically export all variables
-    source .env
-    set +a # stop automatically exporting
-    [ -z "$FQDN" ] && { echo "Error: FQDN isn't specified in .env" >&2; exit 1; }
-    [ -z "$DESTIP" ] && { echo "Error: DESTIP isn't specified in .env" >&2; exit 1; }
+    _check_exists "FQDN"
+    _check_exists "DESTIP"
 
     pushd /etc/caddy > /dev/null
     mkdir -p available enabled
@@ -53,8 +40,6 @@ install-caddy() {
 
 uninstall() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     # Remove systemd scripts
     pushd /etc/systemd/system > /dev/null

@@ -4,13 +4,11 @@
 #
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
+cd ${BASEDIR}
 source lib/util.sh
 
 config(){
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     [ -f .env ] || cp env.example .env
 
@@ -67,8 +65,6 @@ config(){
 hosts() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
-    cd ${BASEDIR}
-
     # Read .env file and grab some vars
     local NETNAME=$(_get_env_value "NETNAME" noempty)
     [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
@@ -80,8 +76,6 @@ hosts() {
 
 install() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     if [[ -e /etc/tinc ]] && [[ ! -L /etc/tinc || "$(readlink -f /etc/tinc)" != "/usr/local/etc/tinc" ]]; then
 	echo "ERROR: /etc/tinc exists but is not a symlink to /usr/local/etc/tinc" >&2
@@ -128,30 +122,8 @@ install() {
     popd > /dev/null
 }
 
-
-push() {
-    # Usage: push hostname
-
-    cd ${BASEDIR}
-    local dirname=$(basename "${BASEDIR}")
-    local dest="$1:/opt/${dirname}/"
-
-    echo Copying local files to $dest
-    rsync -avz --progress \
-        --exclude='.env/' \
-        --exclude='.git/' \
-        --exclude='.gitignore' \
-        --exclude='.gitmodules' \
-        --exclude='.gitattributes' \
-        --exclude='*.swp' \
-        --exclude='.DS_Store' \
-        ./ "root@$dest"
-}
-
 uninstall() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
-
-    cd ${BASEDIR}
 
     # Remove systemd scripts
     pushd /etc/systemd/system > /dev/null
