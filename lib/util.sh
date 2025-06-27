@@ -119,6 +119,10 @@ _load_env() {
     fi
 }
 
+_need_root() {
+    [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
+}
+
 _replace_or_add_line() {
     # Usage: _replace_or_add_line "file" "pattern" "new_line"
     local file="$1"
@@ -147,8 +151,24 @@ push() {
     # Usage: push hostname
 
     cd ${BASEDIR}
+
+    # Set destination target.  Either we use the root account on the
+    # remote server or, if $1 is localhost, we just use
+    # /opt/${BASEDIR} as our destination.
+
+    # If $1 is 'localhost', just use /opt/${BASEDIR} as the destination.
     local dirname=$(basename "${BASEDIR}")
-    local dest="$1:/opt/${dirname}/"
+
+    local dest
+    local target
+    if [[ "$1" == "localhost" ]]; then
+	_need_root
+        dest="/opt/${dirname}/"
+        target="$dest"
+    else
+        dest="$1:/opt/${dirname}/"
+        target="root@$dest"
+    fi
 
     echo Copying local files to $dest
     rsync -rLvz --progress \
@@ -159,7 +179,7 @@ push() {
         --exclude='.gitattributes' \
         --exclude='*.swp' \
         --exclude='.DS_Store' \
-        ./ "root@$dest"
+        ./ "${target}"
 }
 
 
