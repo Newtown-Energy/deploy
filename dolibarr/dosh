@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+APPNAME=$(basename "${BASEDIR}")
+cd ${BASEDIR}
+source lib/util.sh
+
+install() {
+    _need_root
+
+    _load_env
+    _check_exists "FQDN"
+    echo "ServerName ${FQDN}" | envsubst > servername.apache.conf
+    
+    # Our docker-compose.yml file needs these set, so let's make sure they are
+    _check_exists "FQDN"
+    _check_exists "PORT"
+
+    ln -sf $BASEDIR/systemd /etc/systemd/system/${APPNAME}.service
+    systemctl daemon-reload
+    systemctl enable --now ${APPNAME}
+
+}
+
+install-caddy() {
+    # This one shoule be run on newtown.energy, not bromine.newtown.energy
+
+    _need_root
+
+    [ -f .env ] || cp env.example .env
+    _load_env
+
+    _apt-get-update
+    _apt-get-install caddy gettext-base
+
+    # Pull in our .env values if they exist
+    [ -z "$FQDN" ] && { echo "Error: FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$PROXYIP" ] && { echo "Error: PROXYIP isn't specified in .env" >&2; exit 1; }
+    [ -z "$PORT" ] && { echo "Error: PORT isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/caddyfile | envsubst > available/${APPNAME}.caddyfile
+
+    cd enabled
+    ln -sf ../available/${APPNAME}.caddyfile ${APPNAME}.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+}
+
+uninstall() {
+    _need_root
+
+    # Remove systemd scripts
+    systemctl disable --now ${APPNAME}
+    rm -f /etc/systemd/system/${APPNAME}.service
+
+    echo Removed systemd integration.  Not removing data or docker containers.
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+

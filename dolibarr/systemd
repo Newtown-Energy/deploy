@@ -1,0 +1,16 @@
+[Unit]
+Description=Dolibarr
+After=network.target
+
+[Service]
+Type=simple
+#User=dolibarr
+#Group=dolibarr
+WorkingDirectory=/opt/dolibarr
+ExecStart=docker-compose up
+ExecStop=docker-compose down
+Restart=always 
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

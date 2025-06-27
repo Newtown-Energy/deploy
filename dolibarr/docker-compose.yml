@@ -1,0 +1,46 @@
+# Edit this file then run 
+# docker-compose up -d
+# docker-compose logs
+
+services:
+    mariadb:
+        image: mariadb:latest
+        environment:
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme}
+            MYSQL_DATABASE: ${MYSQL_DATABASE:-dolibarr}
+            MYSQL_USER: ${MYSQL_USER:-dolibarr}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+
+        volumes:
+            - /opt/dolibarr/mariadb:/var/lib/mysql
+
+    web:
+        # Choose the version of image to install
+        # dolibarr/dolibarr:latest (the latest stable version)
+        # dolibarr/dolibarr:develop
+        # dolibarr/dolibarr:x.y.z
+        image: dolibarr/dolibarr:latest
+        environment:
+            DOLI_INIT_DEMO: ${DOLI_INIT_DEMO:-0}
+            DOLI_INIT_AUTO: ${DOLI_INIT_AUTO:-0}
+            DOLI_DB_HOST: mariadb
+            DOLI_DB_NAME: ${MYSQL_DATABASE:-dolibarr}
+            DOLI_DB_USER: ${MYSQL_USER:-dolibarr}
+            DOLI_DB_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+            DOLI_URL_ROOT: "${DOLI_URL_ROOT:-http://0.0.0.0}"
+            DOLI_ADMIN_LOGIN: "${DOLI_ADMIN_LOGIN:-admin}"
+            DOLI_ADMIN_PASSWORD: "${DOLI_ADMIN_PASSWORD:-admin}"
+            DOLI_CRON: ${DOLI_CRON:-0}
+            DOLI_CRON_KEY: ${DOLI_CRON_KEY:-mycronsecurekey}
+            DOLI_COMPANY_NAME: ${DOLI_COMPANY_NAME:-MyBigCompany}
+            WWW_USER_ID: ${WWW_USER_ID:-1000}
+            WWW_GROUP_ID: ${WWW_GROUP_ID:-1000}
+
+        ports:
+            - "${PORT}:80"
+        links:
+            - mariadb
+        volumes:
+            - /opt/dolibarr/documents:/var/www/documents
+            - /opt/dolibarr/custom:/var/www/html/custom
+            - /opt/dolibarr/servername.apache.conf:/etc/apache2/conf-enabled/servername.conf
