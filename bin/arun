@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Run command via ansible
+
+ANSIBLE_DIR=${NEWTOWN_DIR}/src/deploy/ansible
+INVENTORY=${ANSIBLE_DIR}/inventory.yaml
+HOSTSPEC="$1"
+shift
+
+if [[ -z "$HOSTSPEC" ]]; then
+    echo "Usage: $(basename $0) <hostspec> [command]" >&2
+    exit 1
+fi
+
+ansible ${HOSTSPEC} -i ${INVENTORY} -m shell -a "$*"

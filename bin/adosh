@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# Ansible dosh
+
+# Use ansible to run dosh on hosts in our inventory
+
+ANSIBLE_DIR=${NEWTOWN_DIR}/src/deploy/ansible
+INVENTORY=${ANSIBLE_DIR}/inventory.yaml
+HOSTSPEC="$1"
+shift
+TASK="$1"
+shift
+
+if [[ -z "$HOSTSPEC" || -z "$TASK" ]]; then
+    echo "Usage: $(basename $0) <hostspec> <task> [more dosh args]" >&2
+    exit 1
+fi
+
+if [[ "${TASK}" = "push" ]]; then
+    PLAYBOOK=push
+    ansible-playbook -i "${INVENTORY}" -e "playbook_hosts=${HOSTSPEC}" "${ANSIBLE_DIR}/${PLAYBOOK}.yaml" 
+    exit
+fi
+
+PLAYBOOK=dosh
+ARGV1="$1"
+shift
+ARGV2="$1"
+shift
+ARGV3="$1"
+shift
+ARGV4="$1"
+shift
+ARGV5="$1"
+shift
+ARGV6="$1"
+
+ansible-playbook -i "${INVENTORY}" -e "playbook_hosts=${HOSTSPEC}" \
+                 -e "task=${TASK}" \
+		 -e "argv1=${ARGV1}" \
+		 -e "argv2=${ARGV2}" \
+		 -e "argv3=${ARGV3}" \
+		 -e "argv4=${ARGV4}" \
+		 -e "argv5=${ARGV5}" \
+		 -e "argv6=${ARGV6}" \
+		 "${ANSIBLE_DIR}/${PLAYBOOK}.yaml" 
