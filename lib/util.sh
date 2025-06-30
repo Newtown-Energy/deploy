@@ -71,6 +71,28 @@ _check_exists() {
     [ -z "${!1}" ] && { echo "Error: $1 isn't specified in .env" >&2; exit 1; }
 }
 
+_export_bw_fields() {
+    # Export fields from Bitwarden.  Must set VAULTID environment variable first.
+    #
+    # Bitwarden CLI must be logged in and unlocked.
+    #
+    # Bitwarden contains an item with fields.  This routine gets the fields and exports them as environment variables.
+
+     while read -r line; do
+        eval "$line"
+    done < <(
+        perl -MJSON -e '
+            my $item = decode_json(`bw get item "$ENV{VAULTID}"`);
+            foreach my $field (@{$item->{fields}}) {
+                my $name = $field->{name};
+                my $value = $field->{value};
+                $value =~ s/"/\\"/g;  # Escape any double quotes
+                print "export $name=\"$value\"\n";
+            }
+        '
+    )
+}
+
 _get_env_value() {
     # Usage: get_env_value "VAR_NAME"
     local var_name="$1"
@@ -91,6 +113,20 @@ _get_env_value() {
         echo "Error: Variable $var_name not found in $env_file" >&2
         return 1
     fi
+}
+
+_get_bw_fields() {
+    # Fetch fields from Bitwarden.  Must set VAULTID environment variable first.
+    #
+    # Bitwarden CLI must be logged in and unlocked.
+    #
+    # Bitwarden contains an item with fields.  This routine gets the fields and sets $fields to them.
+
+    fields=$(perl -MJSON -e '
+	my $item = decode_json(`bw get item "$ENV{VAULTID}"`);
+	my %fields = map { $_->{name} => $_->{value} } @{$item->{fields}};
+	print encode_json(\%fields);
+    ')
 }
 
 _git_clone() {

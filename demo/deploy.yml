@@ -4,10 +4,7 @@
   gather_facts: false
   vars:
     flask_app_dir: /opt/demo
-    # These variables should be securely sourced from Bitwarden beforehand.
-    smtp_user: "{{ lookup('env', 'SMTP_USER') }}"
-    smtp_host: "{{ lookup('env', 'SMTP_HOST') }}"
-    smtp_from_address: "{{ lookup('env', 'SMTP_FROM_ADDRESS') }}"
+    vaultid: "{{ lookup('env', 'VAULTID') }}"
   tasks:
     - name: Pull and run Flask Docker app with environment variables
       ansible.builtin.shell: |
@@ -17,6 +14,6 @@
       args:
         chdir: "{{ flask_app_dir }}"
       environment:
-        SMTP_USER: "{{ smtp_user }}"
-        SMTP_HOST: "{{ smtp_host }}"
-        SMTP_FROM_ADDRESS: "{{ smtp_from_address }}"
+        SMTP_USER: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_USER') | first }}"
+        SMTP_HOST: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_HOST') | first }}"
+        SMTP_FROM_ADDRESS: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_FROM_ADDRESS') | first }}"
