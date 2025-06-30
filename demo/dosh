@@ -23,17 +23,31 @@ _get_fields() {
     ')
 }
 
+_export_fields() {
+    while read -r line; do
+        eval "$line"
+    done < <(
+        perl -MJSON -e '
+            my $item = decode_json(`bw get item "$ENV{VAULTID}"`);
+            foreach my $field (@{$item->{fields}}) {
+                my $name = $field->{name};
+                my $value = $field->{value};
+                $value =~ s/"/\\"/g;  # Escape any double quotes
+                print "export $name=\"$value\"\n";
+            }
+        '
+    )
+}
+
 fields() {
     ## Get our environment variables from Bitwarden
     _get_fields
     echo "$fields"
 }
 
+
 run() {
-    _get_fields
-    export SMTP_USER=$(echo "$fields" | jq -r '.SMTP_USER')
-    export SMTP_HOST=$(echo "$fields" | jq -r '.SMTP_HOST')
-    export SMTP_FROM_ADDRESS=$(echo "$fields" | jq -r '.SMTP_FROM_ADDRESS')
+    _export_fields
     ansible-playbook deploy.yml -i ../ansible/inventory.yaml
 }
 
