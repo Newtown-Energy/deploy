@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+APPNAME=$(basename "${BASEDIR}")
+cd ${BASEDIR}
+source lib/util.sh
+
+# This file mostly exists to support push.
+
+install() {
+    echo No install step needed for this app.
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
