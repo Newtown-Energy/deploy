@@ -1,0 +1,18 @@
+# Demo
+
+This is a demo setup. It demonstrates pulling fields from a bitwarden
+item, passing them to ansible, then on into a docker container on the
+remote side.  We're trying to avoid writing these to disk.
+
+The big downside to this structure is that systemd doesn't have access
+to these values.  When we want to run the container on the remote, we
+*must* do so via ansible from the local side, with the local user
+having access to an unlocked bw session.  This allows for unattended
+automatic docker-compose restarts but makes unattended reboots
+impossible.
+
+To use this demo, `./dosh push bromine.newtown.energy`, then `./dosh
+run`.  Don't use adosh with this demo.  It won't inject the values
+from the bitwarden note.
+
+To adapt for your use, copy and then set VAULTID in the dosh file.

@@ -1,0 +1,12 @@
+services:
+  flask-app:
+    build: flask-app
+    container_name: flask_app
+    restart: unless-stopped
+    environment:
+      - SMTP_HOST
+      - SMTP_USER
+      - SMTP_FROM_ADDRESS
+      - HOME
+    ports:
+      - "3939:5000"

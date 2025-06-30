@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+APPNAME=$(basename "${BASEDIR}")
+cd ${BASEDIR}
+source lib/util.sh
+
+export VAULTID="cda8f639-96d1-463d-ae80-3923f0e05b9a"
+
+install() {
+    echo No install step needed for this app.
+}
+
+_get_fields() {
+    # Corrected Perl one-liner (added missing semicolon)
+    fields=$(perl -MJSON -e '
+	my $item = decode_json(`bw get item "$ENV{VAULTID}"`);
+	my %fields = map { $_->{name} => $_->{value} } @{$item->{fields}};
+	print encode_json(\%fields);
+    ')
+}
+
+fields() {
+    ## Get our environment variables from Bitwarden
+    _get_fields
+    echo "$fields"
+}
+
+run() {
+    _get_fields
+    export SMTP_USER=$(echo "$fields" | jq -r '.SMTP_USER')
+    export SMTP_HOST=$(echo "$fields" | jq -r '.SMTP_HOST')
+    export SMTP_FROM_ADDRESS=$(echo "$fields" | jq -r '.SMTP_FROM_ADDRESS')
+    ansible-playbook deploy.yml -i ../ansible/inventory.yaml
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+

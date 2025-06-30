@@ -1,0 +1,22 @@
+---
+- name: Deploy Flask Docker app with env vars from Bitwarden, no .env file
+  hosts: bromine.newtown
+  gather_facts: false
+  vars:
+    flask_app_dir: /opt/demo
+    # These variables should be securely sourced from Bitwarden beforehand.
+    smtp_user: "{{ lookup('env', 'SMTP_USER') }}"
+    smtp_host: "{{ lookup('env', 'SMTP_HOST') }}"
+    smtp_from_address: "{{ lookup('env', 'SMTP_FROM_ADDRESS') }}"
+  tasks:
+    - name: Pull and run Flask Docker app with environment variables
+      ansible.builtin.shell: |
+        docker compose down || true
+        docker compose pull || true
+        docker compose up -d --build
+      args:
+        chdir: "{{ flask_app_dir }}"
+      environment:
+        SMTP_USER: "{{ smtp_user }}"
+        SMTP_HOST: "{{ smtp_host }}"
+        SMTP_FROM_ADDRESS: "{{ smtp_from_address }}"
