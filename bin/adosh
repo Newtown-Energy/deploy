@@ -18,12 +18,14 @@ if [[ -z "$HOSTSPEC" || -z "$TASK" ]]; then
 fi
 
 if [[ "${TASK}" = "push" ]]; then
+    [ -f "deploy.yml" ] && ANSIBLE_DIR="."
     PLAYBOOK=push
     ansible-playbook -i "${INVENTORY}" -e "playbook_hosts=${HOSTSPEC}" "${ANSIBLE_DIR}/${PLAYBOOK}.yml" 
     exit
 fi
 
 if [[ "${TASK}" = "deploy" ]]; then
+    [ -f "deploy.yml" ] || { echo "Error: deploy.yml not found in current directory." >&2; exit 1; }
     ansible-playbook -i "${INVENTORY}" -e "playbook_hosts=${HOSTSPEC}" deploy.yml
     exit
 fi
