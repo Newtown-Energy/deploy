@@ -1,10 +1,13 @@
+    #vaultid2: "{{ lookup('env', 'VAULTID') }}"
 ---
 - name: Deploy Flask Docker app with env vars from Bitwarden, no .env file
-  hosts: bromine.newtown
+  hosts: '{{ playbook_hosts }}'
   gather_facts: false
   vars:
     flask_app_dir: /opt/demo
-    vaultid: "{{ lookup('env', 'VAULTID') }}"
+    vaultids:
+      bromine.newtown: cda8f639-96d1-463d-ae80-3923f0e05b9a
+    vaultid: "{{ vaultids[inventory_hostname] }}"
   tasks:
     - name: Pull and run Flask Docker app with environment variables
       ansible.builtin.shell: |

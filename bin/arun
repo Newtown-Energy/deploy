@@ -3,7 +3,7 @@
 # Run command via ansible
 
 ANSIBLE_DIR=${NEWTOWN_DIR}/src/deploy/ansible
-INVENTORY=${ANSIBLE_DIR}/inventory.yaml
+INVENTORY=${ANSIBLE_DIR}/inventory.yml
 HOSTSPEC="$1"
 shift
 
