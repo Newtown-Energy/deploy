@@ -16,3 +16,9 @@ run`.  Don't use adosh with this demo.  It won't inject the values
 from the bitwarden note.
 
 To adapt for your use, copy and then set VAULTID in the dosh file.
+
+## TODO
+
+We could make this runnable via adosh if we do something to set the
+vaultid according to the destination server.  That way each server
+instance would get its own set of config.
