@@ -23,6 +23,12 @@ if [[ "${TASK}" = "push" ]]; then
     exit
 fi
 
+if [[ "${TASK}" = "deploy" ]]; then
+    ansible-playbook -i "${INVENTORY}" -e "playbook_hosts=${HOSTSPEC}" deploy.yml
+    exit
+fi
+
+
 PLAYBOOK=dosh
 ARGV1="$1"
 shift
