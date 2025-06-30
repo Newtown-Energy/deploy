@@ -1,0 +1,43 @@
+
+all:
+  children:
+      internal:
+          hosts:
+            newtown:
+              ansible_host: 143.198.120.154
+              ansible_user: root
+            bromine.newtown:
+              ansible_host: 10.1.0.35
+              ansible_user: root
+
+        # soltage:
+        #   hosts:
+        #     fiftyfive_drive:
+        #       ansible_host: 8.8.8.8
+        #       ansible_user: root
+
+authentik:
+  hosts:
+    bromine.newtown
+infisical:
+  hosts:
+    bromine.newtown
+dokuwiki:
+  hosts:
+    bromine.newtown
+file_servers:
+  hosts:
+    bromine.newtown
+non_client:
+  # hosts that aren't client sites
+  hosts:
+    bromine.newtown:
+    newtown:
+routers:
+  # Caddy front end and vpn router
+  hosts:
+    newtown
+
+vaultwarden:
+  hosts:
+    bromine.newtown:

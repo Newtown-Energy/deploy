@@ -1,0 +1,12 @@
+* Ansible
+
+We are using ansible for remote administration.  Generally, we can
+load a script and then run it.  This is often preferable to doing
+every command as an ansible command, which is slow, cumbersome to
+write, and hard to parse for a dev.
+
+The things we'll need to nail are:
+
+ * Firewalls
+ * Tailscale or tinc
+ * System updates

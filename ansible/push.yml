@@ -1,0 +1,26 @@
+# This playbook runs `./dosh push <HOST>` for a HOSTSPEC in our inventory.
+
+# You might run it like this:
+#
+#     adosh file_servers push
+
+# Note that we don't specify which dosh to run except to say "run the
+# one in the current directory".  That is intentional.  It is meant to
+# be run from the dir containing the app we want to push.
+#
+
+# For one target remote host, you can just do `./dosh push FQDN`.  You
+# only need this if you want to run multiple times from multiple
+# targets, with those targets defined in our inventory.
+
+---
+- name: Push to remote
+  gather_facts: no
+  hosts: '{{ playbook_hosts }}'
+  vars:
+    newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
+    appname: "{{ lookup('ansible.builtin.env', 'PWD') | basename }}"
+  tasks:
+    - name: ./deploy push to /opt/{{appname}} on {{ansible_host}}
+      ansible.builtin.command: "{{newtown_dir}}/src/deploy/{{appname}}/dosh push {{ansible_host}}"
+      delegate_to: localhost

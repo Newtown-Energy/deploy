@@ -1,0 +1,27 @@
+# This playbook runs `./dosh <TASK>` for a HOSTSPEC in our inventory.
+
+# You might run it like this:
+#
+#     adosh internal install
+
+# This only works for dosh tasks that run on the remote.  To run push
+# from the local to a remote, you might still use `adosh <target>
+# push`, but it will run the push.yaml playbook.
+
+# If you have a task that takes arguments, append them to the
+# commandline invocatoin.
+
+# Note that we don't specify which app's dosh to run except to say
+# "run the one in the current directory".  That is intentional.  It is
+# meant to be run from the dir containing the app we want to push.
+
+---
+- name: Execute dosh on remote host
+  gather_facts: no
+  hosts: '{{ playbook_hosts }}'
+  vars:
+    newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
+    appname: "{{ lookup('ansible.builtin.env', 'PWD') | basename }}"
+  tasks:
+    - name: Run /opt/{{appname}}/dosh {{task}} on {{ansible_host}}
+      ansible.builtin.command: "/opt/{{appname}}/dosh {{task}} {{argv1}} {{argv2}} {{argv3}} {{argv4}} {{argv5}} {{argv6}}"
