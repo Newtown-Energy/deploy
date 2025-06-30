@@ -11,14 +11,8 @@ having access to an unlocked bw session.  This allows for unattended
 automatic docker-compose restarts but makes unattended reboots
 impossible.
 
-To use this demo, `./dosh push bromine.newtown.energy`, then `./dosh
-run`.  Don't use adosh with this demo.  It won't inject the values
-from the bitwarden note.
+To use this demo, `adosh bromine.newtown push`, then `adosh bromine.newtown deploy`.
 
-To adapt for your use, copy and then set VAULTID in the dosh file.
+To adapt for your use, copy `deploy.yml` and `docker-compose.yml`, and
+then set vaultid in the deploy.yml file.
 
-## TODO
-
-We could make this runnable via adosh if we do something to set the
-vaultid according to the destination server.  That way each server
-instance would get its own set of config.

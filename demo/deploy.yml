@@ -1,22 +1,22 @@
-    #vaultid2: "{{ lookup('env', 'VAULTID') }}"
 ---
 - name: Deploy Flask Docker app with env vars from Bitwarden, no .env file
   hosts: '{{ playbook_hosts }}'
   gather_facts: false
   vars:
-    flask_app_dir: /opt/demo
+    app_dir: "/opt/{{ lookup('env', 'PWD') | basename }}"
     vaultids:
       bromine.newtown: cda8f639-96d1-463d-ae80-3923f0e05b9a
     vaultid: "{{ vaultids[inventory_hostname] }}"
   tasks:
-    - name: Pull and run Flask Docker app with environment variables
+    - name: Pull and run docker-compose app with environment variables
       ansible.builtin.shell: |
         docker compose down || true
         docker compose pull || true
         docker compose up -d --build
       args:
-        chdir: "{{ flask_app_dir }}"
+        chdir: "{{ app_dir }}"
       environment:
         SMTP_USER: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_USER') | first }}"
         SMTP_HOST: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_HOST') | first }}"
         SMTP_FROM_ADDRESS: "{{ lookup('community.general.bitwarden', vaultid, search='id', field='SMTP_FROM_ADDRESS') | first }}"
+      no_log: true

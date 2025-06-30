@@ -3,7 +3,7 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-@app.route('/env')
+@app.route('/')
 def show_env():
     return jsonify({
         "SMTP_HOST": os.environ.get("SMTP_HOST"),

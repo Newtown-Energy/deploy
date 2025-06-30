@@ -183,6 +183,14 @@ _replace_or_add_line() {
     
 }
 
+fields() {
+    ## Get our environment variables from Bitwarden
+    #
+    # Must first do something like: export VAULTID="cda8f639-96d1-463d-ae80-3923f0e05b9a"
+    _get_fields
+    echo "$fields"
+}
+
 push() {
     # Usage: push hostname
 
@@ -208,7 +216,6 @@ push() {
 
     echo Copying local files to $dest
     rsync -rLvz --progress \
-        --exclude='.env' \
         --exclude='.git/' \
         --exclude='.gitignore' \
         --exclude='.gitmodules' \
