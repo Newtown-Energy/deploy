@@ -1,0 +1,14 @@
+[Unit]
+Description=${APPNAME}
+After=network.target
+
+[Service]
+Type=simple
+#User=${APPNAME}
+#Group=${APPNAME}
+WorkingDirectory=/opt/${APPNAME}
+ExecStart= docker-compose up --build
+ExecStop=docker stop ${APPNAME}
+
+[Install]
+WantedBy=multi-user.target

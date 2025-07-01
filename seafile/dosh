@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export APPNAME=$(basename "${BASEDIR}")
+cd ${BASEDIR}
+source lib/util.sh
+
+# This file mostly exists to support push.
+
+install() {
+    # Install envsubst
+    _apt-get-update
+    _apt-get-install gettext-base
+   
+    # Setup SystemD
+    cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
+    systemctl daemon-reload
+    # systemctl enable --now ${APPNAME}
+
+    # We're going to start elastic search, and it will die because it
+    # can't write its data directory.  Then we adjust permissions on
+    # the data dir.  For some reason, if we create the dir and set its
+    # permissions before starting the container, elasticsearch changes
+    # them to something it can't work with.
+    docker-compose up --build elasticsearch
+    chmod -R 777 data/elasticsearch
+
+    # TODO: Sometimes, on first run of the seafile container, /var/log
+    # -> /shared/logs/var-log -> /shared/logs/var-log happens.  We
+    # need to get in there and fix it, but I'm not sure how yet.
+
+    # Not needed for this server
+    rm -f caddyfile caddy.yml
+}
+
+install-caddy() {
+    # This one shoule be run on newtown.energy, not bromine.newtown.energy
+
+    _need_root
+    _load_env
+
+    _apt-get-update
+    _apt-get-install caddy gettext-base
+
+    # Pull in our .env values if they exist
+    [ -z "$FQDN" ] && { echo "Error: FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$PROXYIP" ] && { echo "Error: PROXYIP isn't specified in .env" >&2; exit 1; }
+    [ -z "$PORT" ] && { echo "Error: PORT isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/caddyfile | envsubst > available/${APPNAME}.caddyfile
+
+    cd enabled
+    ln -sf ../available/${APPNAME}.caddyfile ${APPNAME}.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+
+    # We're running our own caddy, not upstream's
+    rm -f caddy.yml
+
+    # Not needed for this server
+    rm -f service seadoc.yml seafile-server.yml
+}
+
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
