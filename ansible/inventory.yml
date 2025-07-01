@@ -16,16 +16,10 @@ all:
         #       ansible_host: 8.8.8.8
         #       ansible_user: root
 
-authentik:
-  hosts:
-    bromine.newtown
-infisical:
-  hosts:
-    bromine.newtown
 dokuwiki:
   hosts:
     bromine.newtown
-file_servers:
+seafile:
   hosts:
     bromine.newtown
 non_client:
@@ -33,7 +27,7 @@ non_client:
   hosts:
     bromine.newtown:
     newtown:
-routers:
+router:
   # Caddy front end and vpn router
   hosts:
     newtown
