@@ -61,8 +61,6 @@ _apt-get-update() {
         apt-get update -qq
         touch /var/lib/apt/periodic/update-success-stamp
         echo "APT package lists updated"
-    else
-        echo "APT updated recently (${time_diff} hours ago). Skipping."
     fi
 }
 
