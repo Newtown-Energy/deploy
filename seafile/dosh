@@ -18,7 +18,7 @@ install() {
     # Setup SystemD
     cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
     systemctl daemon-reload
-    # systemctl enable --now ${APPNAME}
+    systemctl enable --now ${APPNAME}
 
     # We're going to start elastic search, and it will die because it
     # can't write its data directory.  Then we adjust permissions on
