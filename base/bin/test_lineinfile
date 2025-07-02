@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+
+# test_lineinfile
+#
+# Test suite for lineinfile
+# Usage: ./test_lineinfile
+#
+# Exit code: 0 if all tests pass, nonzero if any fail.
+
+set -euo pipefail
+
+SCRIPT="./lineinfile"
+TMPDIR="$(mktemp -d)"
+PASS=0
+FAIL=0
+
+function cleanup {
+    rm -rf "$TMPDIR"
+}
+trap cleanup EXIT
+
+function assert_file_content {
+    local file="$1"
+    local expected="$2"
+    local content
+    content="$(cat "$file")"
+    if [[ "$content" == "$expected" ]]; then
+        echo "PASS"
+        PASS=$((PASS+1))
+    else
+        echo "FAIL: Expected:"
+        echo "-----"
+        echo "$expected"
+        echo "-----"
+        echo "Got:"
+        echo "-----"
+        echo "$content"
+        echo "-----"
+        FAIL=$((FAIL+1))
+    fi
+}
+
+echo "Test 1: Replace matching line (present)"
+f="$TMPDIR/file1"
+echo -e "foo\nbar\nbaz" > "$f"
+$SCRIPT "$f" "^bar" "BAR"
+assert_file_content "$f" $'foo\nBAR\nbaz'
+
+echo "Test 2: Append line if not present"
+f="$TMPDIR/file2"
+echo -e "foo\nbaz" > "$f"
+$SCRIPT "$f" "^bar" "BAR"
+assert_file_content "$f" $'foo\nbaz\nBAR'
+
+echo "Test 3: Insert before (match)"
+f="$TMPDIR/file3"
+echo -e "alpha\nBETA\ngamma" > "$f"
+$SCRIPT "$f" "BETA" "INSERTED" present before
+assert_file_content "$f" $'alpha\nINSERTED\nBETA\ngamma'
+
+echo "Test 4: Insert before (no match, append)"
+f="$TMPDIR/file4"
+echo -e "alpha\ngamma" > "$f"
+$SCRIPT "$f" "BETA" "INSERTED" present before
+assert_file_content "$f" $'alpha\ngamma\nINSERTED'
+
+echo "Test 5: Insert after (match)"
+f="$TMPDIR/file5"
+echo -e "alpha\nBETA\ngamma" > "$f"
+$SCRIPT "$f" "BETA" "INSERTED" present after
+assert_file_content "$f" $'alpha\nBETA\nINSERTED\ngamma'
+
+echo "Test 6: Insert after (no match, append)"
+f="$TMPDIR/file6"
+echo -e "alpha\ngamma" > "$f"
+$SCRIPT "$f" "BETA" "INSERTED" present after
+assert_file_content "$f" $'alpha\ngamma\nINSERTED'
+
+echo "Test 7: Remove matching line (absent)"
+f="$TMPDIR/file7"
+echo -e "foo\nREMOVE\nbar" > "$f"
+$SCRIPT "$f" "REMOVE" "" absent
+assert_file_content "$f" $'foo\nbar'
+
+echo "Test 8: Remove multiple matching lines (absent)"
+f="$TMPDIR/file8"
+echo -e "foo\nREMOVE\nbar\nREMOVE\nbaz" > "$f"
+$SCRIPT "$f" "REMOVE" "" absent
+assert_file_content "$f" $'foo\nbar\nbaz'
+
+echo "Test 9: Replace only first match"
+f="$TMPDIR/file9"
+echo -e "foo\nbar\nbar\nbaz" > "$f"
+$SCRIPT "$f" "^bar" "BAR"
+assert_file_content "$f" $'foo\nBAR\nbar\nbaz'
+
+echo "Test 10: Insert before only first match"
+f="$TMPDIR/file10"
+echo -e "foo\nbar\nbar\nbaz" > "$f"
+$SCRIPT "$f" "^bar" "BEFORE" present before
+assert_file_content "$f" $'foo\nBEFORE\nbar\nbar\nbaz'
+
+echo "Test 11: Insert after only first match"
+f="$TMPDIR/file11"
+echo -e "foo\nbar\nbar\nbaz" > "$f"
+$SCRIPT "$f" "^bar" "AFTER" present after
+assert_file_content "$f" $'foo\nbar\nAFTER\nbar\nbaz'
+
+echo "Test 12: No-op if line already present and matches"
+f="$TMPDIR/file12"
+echo -e "foo\nalready here\nbaz" > "$f"
+$SCRIPT "$f" "^already here$" "already here"
+assert_file_content "$f" $'foo\nalready here\nbaz'
+
+echo "Test 13: Works with empty file (append)"
+f="$TMPDIR/file13"
+: > "$f"
+$SCRIPT "$f" "^foo" "foo"
+assert_file_content "$f" $'foo'
+
+echo "--------------------------"
+echo "Passed: $PASS"
+echo "Failed: $FAIL"
+echo "--------------------------"
+
+if [[ $FAIL -eq 0 ]]; then
+    exit 0
+else
+    exit 1
+fi

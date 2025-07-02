@@ -3,8 +3,19 @@
 There are some tools we're going to want on every server we deploy to.
 We can install them in this package.
 
+# Install
 
-## Push
+## Via ansible
+
+```
+ap ../ansible/push
+adosh all install
+```
+## Via dosh
+
+This is good for installing on a host that isn't in your ansible inventory.
+
+# Push
 
 ./dosh push <example.com> will send this script to a remote server.
 
@@ -18,3 +29,8 @@ Alternatively:
 
     adosh HOSTSPEC push
 
+
+# lineinfile
+
+We have a script here that is meant to mimic ansible's lineinfile.
+Running `dosh install` will copy it to /usr/local/bin.

@@ -15,8 +15,10 @@ install() {
     _apt-get-install apt-listchanges gettext-base unattended-upgrades
 
     # Install lade
-    curl -fsSL https://raw.githubusercontent.com/zifeo/lade/main/installer.sh | bash
-    lade upgrade
+    #curl -fsSL https://raw.githubusercontent.com/zifeo/lade/main/installer.sh | bash
+    #lade upgrade
+
+    cp bin/lineinfile /usr/local/bin/lineinfile
 }
 
 uninstall() {
