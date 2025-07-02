@@ -1,8 +1,9 @@
-# This playbook runs `./dosh push <HOST>` for a HOSTSPEC in our inventory.
+# This playbook pushes material to our invnetory-listed remotes.
 
 # You might run it like this:
 #
-#     adosh file_servers push
+#     cd /opt/APPNAME
+#     ap ../ansible/push
 
 # Note that we don't specify which dosh to run except to say "run the
 # one in the current directory".  That is intentional.  It is meant to
@@ -14,13 +15,53 @@
 # targets, with those targets defined in our inventory.
 
 ---
-- name: Push to remote
-  gather_facts: no
-  hosts: '{{ playbook_hosts }}'
+- name: Push to remote app server
+  hosts: '{{ appname }}'
+  gather_facts: false
   vars:
     newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
     appname: "{{ lookup('ansible.builtin.env', 'PWD') | basename }}"
   tasks:
-    - name: ./deploy push to /opt/{{appname}} on {{ansible_host}}
-      ansible.builtin.command: "{{newtown_dir}}/src/deploy/{{appname}}/dosh push {{ansible_host}}"
-      delegate_to: localhost
+
+    # Note that this will exclude file globs listed one-to-a-line and
+    # prefixed with "- " in .rsync-filter
+    - name: Rsync . with remote, but not caddy
+      ansible.posix.synchronize:
+        src: "{{newtown_dir}}/src/deploy/{{appname}}"
+        dest: /opt
+        copy_links: true
+        rsync_opts:
+          - "--exclude=ansible"
+          - "--exclude=caddyfile"
+          - "--exclude=.git"
+          - "--exclude=.gitignore"
+          - "--exclude=.gitmodules"
+          - "--exclude=.gitattributes"
+          - "--exclude=*.swp"
+          - "--exclude=.DS_Store"
+
+- name: Push to remote proxy server
+  hosts: '{{ appname+"_proxy" }}'
+  gather_facts: false
+  vars:
+    newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
+    appname: "{{ lookup('ansible.builtin.env', 'PWD') | basename }}"
+  tasks:
+
+    # Note that this will exclude file globs listed one-to-a-line and
+    # prefixed with "- " in .rsync-filter
+    - name: Rsync to reverse proxy frontend
+      ansible.posix.synchronize:
+        src: "{{newtown_dir}}/src/deploy/{{appname}}"
+        dest: /opt
+        copy_links: true
+        rsync_opts:
+          - "--exclude=.service"
+          - "--exclude=*.yml"
+          - "--exclude=ansible"
+          - "--exclude=.git"
+          - "--exclude=.gitignore"
+          - "--exclude=.gitmodules"
+          - "--exclude=.gitattributes"
+          - "--exclude=*.swp"
+          - "--exclude=.DS_Store"

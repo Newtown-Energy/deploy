@@ -9,7 +9,7 @@
 # push`, but it will run the push.yaml playbook.
 
 # If you have a task that takes arguments, append them to the
-# commandline invocatoin.
+# commandline invocation.
 
 # Note that we don't specify which app's dosh to run except to say
 # "run the one in the current directory".  That is intentional.  It is

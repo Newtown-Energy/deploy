@@ -1,34 +1,47 @@
-
+---
 all:
   children:
-      internal:
-          hosts:
-            newtown:
-              ansible_host: 143.198.120.154
-              ansible_user: root
-            bromine.newtown:
-              ansible_host: 10.1.0.35
-              ansible_user: root
+    internal:
+      hosts:
+        newtown:
+          ansible_host: 143.198.120.154
+          ansible_user: root
+        bromine.newtown:
+          ansible_host: 10.1.0.35
+          ansible_user: root
 
-        # soltage:
-        #   hosts:
-        #     fiftyfive_drive:
-        #       ansible_host: 8.8.8.8
-        #       ansible_user: root
+    # soltage:
+    #   hosts:
+    #     fiftyfive_drive:
+    #       ansible_host: 8.8.8.8
+    #       ansible_user: root
+base:
+  children:
+    internal:
 
 dokuwiki:
+  hosts:
+    bromine.newtown
+leantime:
+  hosts:
+    bromine.newtown
+leantime_proxy:
+  hosts:
+    newtown
+msmtp:
+  hosts:
+    newtown
+msmtp_proxy:
   hosts:
     bromine.newtown
 seafile:
   hosts:
     bromine.newtown
-non_client:
-  # hosts that aren't client sites
+seafile_proxy:
   hosts:
-    bromine.newtown:
-    newtown:
-router:
-  # Caddy front end and vpn router
+    newtown
+
+caddy:
   hosts:
     newtown
 
