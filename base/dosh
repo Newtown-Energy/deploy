@@ -18,7 +18,6 @@ install() {
     #curl -fsSL https://raw.githubusercontent.com/zifeo/lade/main/installer.sh | bash
     #lade upgrade
 
-    cp bin/lineinfile /usr/local/bin/lineinfile
 }
 
 uninstall() {
