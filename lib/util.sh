@@ -3,10 +3,10 @@ _add_if_missing_or_empty() {
     local file="$1"
     local varname="$2"
     local new_value="$3"
-    
+
     # Escape regex special characters in varname
     local escaped_varname=$(printf '%s\n' "$varname" | sed -e 's/[][\/.^$*]/\\&/g')
-    
+
     # Create regex patterns
     local empty_regex="^[[:space:]]*${escaped_varname}[[:space:]]*=[[:space:]]*(\"\"|''|)[[:space:]]*$"
     local any_value_regex="^[[:space:]]*${escaped_varname}[[:space:]]*="
@@ -64,9 +64,42 @@ _apt-get-update() {
     fi
 }
 
-# Check that a variable isn't empty. Do this after loading .env 
+# Check that a variable isn't empty. Do this after loading .env
 _check_exists() {
     [ -z "${!1}" ] && { echo "Error: $1 isn't specified in .env" >&2; exit 1; }
+}
+
+_create_system_user() {
+
+    # Create a system user for running an app
+
+    _need_root
+
+    local username="$1"
+    local homedir="/var/lib/$username"
+
+    # Check if username is provided
+    if [[ -z "$username" ]]; then
+        echo "Usage: _create_system_user <username>"
+        return 1
+    fi
+
+    # Check if user already exists
+    if id "$username" &>/dev/null; then
+        return 0
+    fi
+
+    # Create the user:
+    # -r: system user (no password, non-login)
+    # -s /usr/sbin/nologin: non-login shell
+    # -d: home directory
+    # -m: create home directory
+    useradd -r -m -d "$homedir" -s /usr/sbin/nologin "$username"
+
+    # Set permissions for the home directory
+    chown -R "$username":"$username" "$homedir"
+
+    echo "User '$username' created with home '$homedir' and non-login shell."
 }
 
 _export_bw_fields() {
@@ -127,7 +160,7 @@ _get_bw_fields() {
     ')
 }
 
-_git_clone() {
+_git-clone() {
    # clone or update git repo
    # 2 params: repo url and dest dir
    mkdir -p "$2"
@@ -153,6 +186,64 @@ _load_env() {
     fi
 }
 
+_podman-create-secret() {
+    # Create a podman secret if it doesn't already exist
+
+    # Example usage:
+    # _podman_create_secret "neems-demo" "db_password" "mysecurepassword123"
+
+    _need_root
+
+  local user="$1"
+  local secret_name="$2"
+  local secret_value="$3"
+
+  # Validate inputs
+  if [[ -z "$user" || -z "$secret_name" || -z "$secret_value" ]]; then
+    echo "Error: Missing arguments. Usage: _podman_create_secret <user> <secret_name> <secret_value>"
+    return 1
+  fi
+
+  # Check if secret already exists
+  if sudo -u "$user" podman secret inspect "$secret_name" &>/dev/null; then
+    echo "Secret '$secret_name' already exists for user '$user'. Skipping creation."
+    return 0
+  fi
+
+  # Create the secret
+  echo "Creating secret '$secret_name' for user '$user'..."
+  echo -n "$secret_value" | sudo -u "$user" podman secret create "$secret_name" -
+
+  # Verify creation
+  if sudo -u "$user" podman secret inspect "$secret_name" &>/dev/null; then
+    echo "Successfully created secret '$secret_name'"
+    return 0
+  else
+    echo "Failed to create secret '$secret_name'"
+    return 1
+  fi
+}
+
+_podman-create-user() {
+
+    # Create a system user for running podman containers on the app server
+
+    _need_root
+
+    local username="$1"
+
+    _system_create_user $username
+
+    # Enable lingering for our new user so that it can run podman
+    loginctl enable-linger $(id -u ${username})
+
+    # Create subuid and subgid ranges for the user so that it can run podman
+    usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${username}
+    sudo -u "${username}" podman system migrate
+
+    echo "User '$username' is now podman-enabled."
+}
+
 _need_root() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 }
@@ -162,7 +253,7 @@ _replace_or_add_line() {
     local file="$1"
     local pattern="$2"
     local new_line="$3"
-   
+
     # Process the file
     if grep -q "$pattern" "$file"; then
         # Special handling for ^ start anchor
@@ -178,7 +269,7 @@ _replace_or_add_line() {
         # Append new line
         echo "$new_line" >> "$file"
     fi
-    
+
 }
 
 fields() {
@@ -212,15 +303,33 @@ push() {
         target="root@$dest"
     fi
 
-    echo Copying local files to $dest
-    rsync -rLvz --progress \
-        --exclude='.git/' \
-        --exclude='.gitignore' \
-        --exclude='.gitmodules' \
-        --exclude='.gitattributes' \
-        --exclude='*.swp' \
-        --exclude='.DS_Store' \
-        ./ "${target}"
+# Build rsync command
+    local rsync_cmd=("rsync" "-rLvz" "--progress")
+
+    # Add standard excludes
+    rsync_cmd+=(
+        "--exclude=.claude/"
+        "--exclude=.DS_Store"
+        "--exclude=.git/"
+        "--exclude=.gitignore"
+        "--exclude=.gitmodules"
+        "--exclude=.gitattributes"
+        "--exclude=.push-exclude"
+        "--exclude=*.swp"
+    )
+
+    # Add excludes from .push-exclude file if it exists
+    if [[ -f ".push-exclude" ]]; then
+        rsync_cmd+=("--exclude-from=.push-exclude")
+    fi
+
+    # Add source and destination
+    rsync_cmd+=("./" "${target}")
+
+    echo "Copying local files to $dest"
+    echo
+    # Print the command (with proper quoting for debugging)
+    printf "%q " "${rsync_cmd[@]}"
+    echo
+    "${rsync_cmd[@]}"
 }
-
-
