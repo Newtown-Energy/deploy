@@ -4,22 +4,22 @@
 #
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export APPNAME=$(basename "${BASEDIR}")
 cd ${BASEDIR}
 source lib/util.sh
 
 config(){
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
-    [ -f .env ] || cp env.example .env
-
     # Read .env file and grab some vars
-    local NETNAME=$(_get_env_value "NETNAME" noempty)
+    _load-env
+    local NETNAME=$(_get-env-value "NETNAME" noempty)
     [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
-    local IP=$(_get_env_value "IP" noempty) # should be in 10.14.0.0/16
+    local IP=$(_get-env-value "IP" noempty) # should be in 10.14.0.0/16
     [ -z "$IP" ] && { echo "Error: IP isn't specified in .env" >&2; exit 1; }
-    local HOSTNAME=$(_get_env_value "HOSTNAME" noempty) # should be in 10.14.0.0/16
+    local HOSTNAME=$(_get-env-value "HOSTNAME" noempty) # should be in 10.14.0.0/16
     [ -z "$HOSTNAME" ] && { echo "Error: HOSTNAME isn't specified in .env" >&2; exit 1; }
-    local SUBNET=$(_get_env_value "SUBNET" noempty) # should be in 10.14.0.0/16
+    local SUBNET=$(_get-env-value "SUBNET" noempty) # should be in 10.14.0.0/16
     [ -z "$SUBNET" ] && { echo "Error: SUBNET isn't specified in .env" >&2; exit 1; }
 
     hosts
@@ -66,7 +66,7 @@ hosts() {
     [ "$(id -u)" -eq 0 ] || { echo "This script must be run as root" >&2; exit 1; }
 
     # Read .env file and grab some vars
-    local NETNAME=$(_get_env_value "NETNAME" noempty)
+    local NETNAME=$(_get-env-value "NETNAME" noempty)
     [ -z "$NETNAME" ] && { echo "Error: NETNAME isn't specified in .env" >&2; exit 1; }
 
     # Generate key
@@ -85,16 +85,59 @@ install() {
 	exit 1
     fi
 
+    # Check if tinc is already installed
+    local tinc_path=""
+    if command -v tinc >/dev/null 2>&1; then
+        tinc_path=$(command -v tinc)
+    elif command -v tincd >/dev/null 2>&1; then
+        tinc_path=$(command -v tincd)
+    elif [ -f /usr/sbin/tincd ]; then
+        tinc_path="/usr/sbin/tincd"
+    elif [ -f /usr/local/sbin/tincd ]; then
+        tinc_path="/usr/local/sbin/tincd"
+    elif [ -f /sbin/tincd ]; then
+        tinc_path="/sbin/tincd"
+    fi
+
+    if [ -n "$tinc_path" ]; then
+        local version_output
+        if [[ "$tinc_path" == *"tincd" ]]; then
+            version_output=$($tinc_path --version 2>&1 | head -1)
+        else
+            version_output=$($tinc_path --version 2>&1 | head -1)
+        fi
+        
+        # Extract version number (format: tinc version 1.0.36 or tincd 1.1pre18)
+        local version=$(echo "$version_output" | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        
+        if [ -n "$version" ]; then
+            # Compare version using sort -V
+            if printf '%s\n1.1\n' "$version" | sort -V | head -1 | grep -q "^1\.1"; then
+                echo "tinc version $version is already installed - this is compatible (1.1+)" >&2
+                echo "Skipping installation" >&2
+                return 0
+            else
+                echo "tinc version $version is installed (< 1.1)" >&2
+                echo "You can use this version but this install script won't work" >&2
+                echo "You'll need to manually generate keys" >&2
+                exit 1
+            fi
+        else
+            echo "ERROR: tinc is installed but version could not be determined" >&2
+            exit 1
+        fi
+    fi
+
     # Install tinc 1.1
     local URL=https://github.com/gsliepen/tinc.git
-    local DESTDIR=/opt/tinc/src
+    local DESTDIR=/opt/$APPNAME/src
     mkdir -p $DESTDIR
 
     _apt-get-update
     _apt-get-install git meson ninja-build pkg-config build-essential libssl-dev libncurses-dev
     _apt-get-install libreadline-dev zlib1g-dev liblzo2-dev liblz4-dev texinfo diffutils procps socat netcat-openbsd
 
-    _git_clone $URL ${DESTDIR}
+    _git-clone $URL ${DESTDIR}
     pushd ${DESTDIR} > /dev/null
     meson setup builddir
     meson compile -C builddir
@@ -117,9 +160,17 @@ install() {
     # tinc 1.1 compiled from source wants to use /usr/local/etc/tinc, but debian expects it in /etc/tinc.
     mkdir -p /usr/local/etc/tinc
     ln -sf /usr/local/etc/tinc /etc/tinc
+    unlink /usr/local/etc/tinc/tinc
     mkdir -p /var/local/run
 
     popd > /dev/null
+}
+
+purge() {
+    uninstall
+
+    # Remove tinc
+    rm -rf /usr/local/etc/tinc /etc/tinc 
 }
 
 uninstall() {
@@ -131,10 +182,10 @@ uninstall() {
     popd > /dev/null
 
     # Remove tinc
-    rm -rf /usr/local/sbin/tinc* /usr/local/etc/tinc /etc/tinc /var/local/run/tinc
+    rm -rf /usr/local/sbin/tinc* /var/local/run/tinc
 
     # Remove source directory
-    rm -rf /opt/tinc/src
+    rm -rf /opt/$APPNAME/src
 }
 
 "$@" # <- execute the task
