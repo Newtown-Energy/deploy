@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+SCRIPTNAME=`basename "$0"`
+BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+export APPNAME=$(basename "${BASEDIR}")
+cd ${BASEDIR}
+source lib/util.sh
+
+# This file mostly exists to support push.
+
+_create_podman_user() {
+    _need_root
+    
+    local username="$1"
+    local homedir="/var/lib/$username"
+
+    # Check if username is provided
+    if [[ -z "$username" ]]; then
+        echo "Usage: create_podman_user <username>"
+        return 1
+    fi
+
+    # Check if user already exists
+    if id "$username" &>/dev/null; then
+        return 0
+    fi
+
+    # Create the user: 
+    # -r: system user (no password, non-login)
+    # -s /usr/sbin/nologin: non-login shell
+    # -d: home directory
+    # -m: create home directory
+    useradd -r -m -d "$homedir" -s /usr/sbin/nologin "$username"
+
+    # Set permissions for the home directory
+    chown -R "$username":"$username" "$homedir"
+
+    # Enable lingering for our new user so that it can run podman
+    loginctl enable-linger $(id -u ${username}) 
+
+    # Create subuid and subgid ranges for the user so that it can run podman
+    usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${username}
+    sudo -u leantime podman system migrate
+
+
+    echo "User '$username' created with home '$homedir' and non-login shell."
+}
+
+start() {
+    _need_root
+
+    mkdir -p /opt/openproject/data/pgdata
+    mkdir -p /opt/openproject/data/assets
+
+    docker run --rm -p 4962:80 --name openproject \
+      -e OPENPROJECT_HOST__NAME=proj.newtown.energy \
+      -e OPENPROJECT_SECRET_KEY_BASE=66IS2cTiqrHSfW83Rt98UJHy63QdgPdHset32 \
+      -e OPENPROJECT_HTTPS=true \
+      -v /opt/openproject/data/pgdata:/var/openproject/pgdata \
+      -v /opt/openproject/data/assets:/var/openproject/assets \
+      openproject/openproject:16
+}
+
+install() {
+    _need_root
+
+    # Setup SystemD
+    if [ -f ${BASEDIR}/service ]; then
+	cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
+	systemctl daemon-reload
+	systemctl enable --now ${APPNAME}
+    fi
+
+    # Not needed for this server
+    rm -f caddyfile
+}
+
+install-caddy() {
+    # This one shoule be run on newtown.energy, not bromine.newtown.energy
+
+    _need_root
+
+    _apt-get-update
+    _apt-get-install caddy gettext-base
+
+    # Pull in our .env values if they exist
+    [ ! -f .env ] && cp env.example .env
+    _load_env
+    [ -z "$CADDY_FQDN" ] && { echo "Error: CADDY_FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$CADDY_DEST_IP" ] && { echo "Error: CADDY_DEST_IP isn't specified in .env" >&2; exit 1; }
+    [ -z "$CADDY_DEST_PORT" ] && { echo "Error: CADDY_DEST_PORT isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/caddyfile | envsubst > available/${APPNAME}.caddyfile
+
+    cd enabled
+    ln -sf ../available/${APPNAME}.caddyfile ${APPNAME}.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+
+    # Not needed for this server
+    rm -f service 
+}
+
+uninstall() {
+    _need_root
+
+    # Remove the service
+    systemctl stop ${APPNAME}
+    systemctl disable ${APPNAME}
+    rm -f /etc/systemd/system/${APPNAME}.service
+    systemctl daemon-reload
+
+}
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+
