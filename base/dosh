@@ -18,6 +18,7 @@ install() {
     #curl -fsSL https://raw.githubusercontent.com/zifeo/lade/main/installer.sh | bash
     #lade upgrade
 
+    cp bin/envfile-sub /usr/local/bin/envfile-sub
 }
 
 uninstall() {

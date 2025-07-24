@@ -8,7 +8,7 @@ We can install them in this package.
 ## Via ansible
 
 ```
-ap ../ansible/push
+ap push
 adosh all install
 ```
 ## Via dosh
