@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# Run a playbook with our standard invnetory file.
+
+ANSIBLE_DIR="${NEWTOWN_DIR}/src/deploy/ansible"
+INVENTORY="${ANSIBLE_DIR}/inventory.yml"
+
+playbook="$1"
+shift
+if [ -z "$playbook" ]; then
+    echo "Usage: $(basename "$0") <playbook> [ansible-playbook args]" >&2
+    exit 1
+fi
+
+if [ -f "$playbook" ]; then playbook="$playbook"
+elif [ -f "$playbook.yml" ]; then playbook="$playbook.yml"
+elif [ -f "$playbook.yaml" ]; then playbook="$playbook.yaml"
+
+elif [ -f "ansible/$playbook" ]; then playbook="ansible/$playbook"
+elif [ -f "ansible/$playbook.yml" ]; then playbook="ansible/$playbook.yml"
+elif [ -f "ansible/$playbook.yaml" ]; then playbook="ansible/$playbook.yaml"
+
+elif [ -f "${ANSIBLE_DIR}/${playbook}" ]; then playbook="${ANSIBLE_DIR}/${playbook}"
+elif [ -f "${ANSIBLE_DIR}/${playbook}.yml" ]; then playbook="${ANSIBLE_DIR}/${playbook}.yml"
+elif [ -f "${ANSIBLE_DIR}/${playbook}.yaml" ]; then playbook="${ANSIBLE_DIR}/${playbook}.yaml"
+
+else
+    echo "Error: Playbook '$playbook' not found in current dire, ./ansible or $ANSIBLE_DIR" >&2
+    exit 1
+fi
+
+ansible-playbook -i "${INVENTORY}" "$playbook" "$@"

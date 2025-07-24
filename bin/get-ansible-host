@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""
+get-ansible-host - Get the ansible_host IP for a given hostname from inventory
+
+See get-ansible-host --help for usage.
+"""
+
+import sys
+import os
+import argparse
+from ansible.inventory.manager import InventoryManager
+from ansible.parsing.dataloader import DataLoader
+from ansible.vars.manager import VariableManager
+
+
+def get_ansible_host_ip(inventory_file, hostname):
+    """Get the ansible_host IP for a given hostname from Ansible inventory"""
+    try:
+        loader = DataLoader()
+        inventory = InventoryManager(loader=loader, sources=[inventory_file])
+        variable_manager = VariableManager(loader=loader, inventory=inventory)
+        
+        host = inventory.get_host(hostname)
+        if host:
+            host_vars = variable_manager.get_vars(host=host)
+            return host_vars.get('ansible_host', hostname)
+        return None
+    except Exception as e:
+        print(f"Error parsing inventory: {e}", file=sys.stderr)
+        return None
+
+
+def get_default_inventory():
+    """Get the default inventory file path"""
+    newtown_dir = os.environ.get('NEWTOWN_DIR')
+    if newtown_dir:
+        return os.path.join(newtown_dir, 'src', 'deploy', 'ansible', 'inventory.yml')
+    return 'inventory.yml'
+
+
+parser = argparse.ArgumentParser(
+    description="Get the ansible_host IP for a hostname from Ansible inventory",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="""
+Examples:
+%(prog)s bromine.newtown
+%(prog)s -i production.yml web01
+%(prog)s --inventory inventory/hosts.yml database01
+
+Environment Variables:
+NEWTOWN_DIR    Base directory for default inventory path
+             (default inventory: $NEWTOWN_DIR/src/deploy/ansible/inventory.yml)
+    """
+)
+
+parser.add_argument('hostname', help='The hostname to look up')
+
+parser.add_argument(
+    '-i', '--inventory',
+    default=get_default_inventory(),
+    help='Path to Ansible inventory file (default: $NEWTOWN_DIR/src/deploy/ansible/inventory.yml or inventory.yml)'
+)
+
+def main():
+   
+    args = parser.parse_args()
+    
+    # Check if inventory file exists
+    try:
+        with open(args.inventory, 'r'):
+            pass
+    except FileNotFoundError:
+        print(f"Error: Inventory file '{args.inventory}' not found", file=sys.stderr)
+        sys.exit(1)
+    except PermissionError:
+        print(f"Error: Permission denied reading '{args.inventory}'", file=sys.stderr)
+        sys.exit(1)
+    
+    # Get the IP
+    ip = get_ansible_host_ip(args.inventory, args.hostname)
+    
+    if ip is None:
+        print(f"Error: Host '{args.hostname}' not found in inventory", file=sys.stderr)
+        sys.exit(1)
+    
+    print(ip)
+
+
+if __name__ == '__main__':
+    main()
