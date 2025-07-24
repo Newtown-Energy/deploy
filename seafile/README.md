@@ -9,8 +9,13 @@ Seafile is our document store.
 This works well if you're focused on a single host or using this dir
 to install on a box that isn't in the inventory.
 
+Send this repo to /opt/seafile on machines indicated in our ansible inventory:
+
 ```
-./dosh push bromine.newtown.energy
+./dosh push
+```
+
+```
 ssh bromine.newtown.energy
 /opt/seafile/dosh install
 exit

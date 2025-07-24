@@ -7,8 +7,18 @@ BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export APPNAME=$(basename "${BASEDIR}")
 cd ${BASEDIR}
 source lib/util.sh
+# Save the original push function before we shadow it
+eval "$(declare -f push | sed '1s/push/_util_push/')"
+ANSIBLE_DIR=$NEWTOWN/src/deploy/ansible
+INVENTORY_FNAME=${ANSIBLE_DIR}/inventory.yml
 
-# This file mostly exists to support push.
+change-pass() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: $SCRIPTNAME change-pass <email>" >&2
+        exit 1
+    fi
+    bin/change-user-password "$1"
+}
 
 install() {
     # Install envsubst
@@ -68,6 +78,21 @@ install-caddy() {
     rm -f service seadoc.yml seafile-server.yml
 }
 
+push() {
+
+    # Here we do our standard push up to servers, but we're pulling
+    # the destinations from our ansible inventory.
+
+    # Process seafile hosts
+    while IFS= read -r host; do
+        [ -n "$host" ] && _util_push "$host"
+    done < <(get-ansible-service-hosts --resolve $APPNAME)
+    
+    # Process seafile_proxy hosts
+    while IFS= read -r host; do
+        [ -n "$host" ] && _util_push "$host"
+    done < <(get-ansible-service-hosts --resolve ${APPNAME}_proxy)
+}
 
 "$@" # <- execute the task
 [ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
