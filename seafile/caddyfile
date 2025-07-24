@@ -1,41 +1,32 @@
-# ${FQDN} {
-# 	reverse_proxy ${PROXYIP}:${PORT}
-# }
-
 ${FQDN} {
     # Global unlimited upload size (for Office Online integration)
-    request_body_max_size 0
+    request_body {
+       max_size 0
+    }
 
-    # Root location - Seahub
-    handle / {
-        reverse_proxy http://${PROXYIP}:${PORT} {
+   reverse_proxy http://${PROXYIP}:${PORT}
+}
+
+# SeaDoc subdomain
+seadoc.${FQDN} {
+    # WebSocket connections
+    @ws {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    handle @ws {
+        reverse_proxy http://${PROXYIP}:${SEADOC_PORT} {
             header_up Host {http.request.host}
             header_up X-Real-IP {http.request.remote}
-            header_up X-Forwarded-For {http.request.remote}
-            header_up X-Forwarded-Host {http.request.host}
-            transport http {
-                read_timeout 1200s
-            }
         }
     }
 
-    # Seafile file server
-    handle /seafhttp/* {
-        # Strip /seafhttp prefix
-        rewrite * /{path}
-        reverse_proxy http://${PROXYIP}:${PORT2} {
-            header_up X-Forwarded-For {http.request.remote}
-            transport http {
-                connect_timeout 36000s
-                read_timeout 36000s
-                write_timeout 36000s
-            }
-        }
-    }
 
-    # Static media files
-    handle /media/* {
-        root * /opt/seafile/seafile-server-latest/seahub
-        file_server
+    # All other requests
+    handle {
+        reverse_proxy http://${PROXYIP}:${SEADOC_PORT} {
+            header_up Host {http.request.host}
+            header_up X-Real-IP {http.request.remote}
+        }
     }
 }

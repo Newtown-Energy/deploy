@@ -50,7 +50,7 @@ install-caddy() {
     # This one shoule be run on newtown.energy, not bromine.newtown.energy
 
     _need_root
-    _load_env
+    _load-env
 
     _apt-get-update
     _apt-get-install caddy gettext-base
