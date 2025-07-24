@@ -3,10 +3,10 @@ _add_if_missing_or_empty() {
     local file="$1"
     local varname="$2"
     local new_value="$3"
-
+    
     # Escape regex special characters in varname
     local escaped_varname=$(printf '%s\n' "$varname" | sed -e 's/[][\/.^$*]/\\&/g')
-
+    
     # Create regex patterns
     local empty_regex="^[[:space:]]*${escaped_varname}[[:space:]]*=[[:space:]]*(\"\"|''|)[[:space:]]*$"
     local any_value_regex="^[[:space:]]*${escaped_varname}[[:space:]]*="
@@ -64,7 +64,7 @@ _apt-get-update() {
     fi
 }
 
-# Check that a variable isn't empty. Do this after loading .env
+# Check that a variable isn't empty. Do this after loading .env 
 _check_exists() {
     [ -z "${!1}" ] && { echo "Error: $1 isn't specified in .env" >&2; exit 1; }
 }
@@ -74,7 +74,7 @@ _create_system_user() {
     # Create a system user for running an app
 
     _need_root
-
+    
     local username="$1"
     local homedir="/var/lib/$username"
 
@@ -89,7 +89,7 @@ _create_system_user() {
         return 0
     fi
 
-    # Create the user:
+    # Create the user: 
     # -r: system user (no password, non-login)
     # -s /usr/sbin/nologin: non-login shell
     # -d: home directory
@@ -124,8 +124,8 @@ _export_bw_fields() {
     )
 }
 
-_get_env_value() {
-    # Usage: get_env_value "VAR_NAME"
+_get-env-value() {
+    # Usage: get-env-value "VAR_NAME"
     local var_name="$1"
     local env_file=".env"
 
@@ -174,7 +174,7 @@ _git-clone() {
    fi
 }
 
-_load_env() {
+_load-env() {
     # Load environment variables from .env file
 
     if [ -f .env ]; then
@@ -183,10 +183,11 @@ _load_env() {
 	set +a # stop automatically exporting
     else
         cp env.example .env
+	_load-env
     fi
 }
 
-_podman-create-secret() {
+_podman_create_secret() {
     # Create a podman secret if it doesn't already exist
 
     # Example usage:
@@ -224,7 +225,7 @@ _podman-create-secret() {
   fi
 }
 
-_podman-create-user() {
+_podman_create_user() {
 
     # Create a system user for running podman containers on the app server
 
@@ -235,7 +236,7 @@ _podman-create-user() {
     _system_create_user $username
 
     # Enable lingering for our new user so that it can run podman
-    loginctl enable-linger $(id -u ${username})
+    loginctl enable-linger $(id -u ${username}) 
 
     # Create subuid and subgid ranges for the user so that it can run podman
     usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${username}
@@ -253,7 +254,7 @@ _replace_or_add_line() {
     local file="$1"
     local pattern="$2"
     local new_line="$3"
-
+   
     # Process the file
     if grep -q "$pattern" "$file"; then
         # Special handling for ^ start anchor
@@ -269,7 +270,7 @@ _replace_or_add_line() {
         # Append new line
         echo "$new_line" >> "$file"
     fi
-
+    
 }
 
 fields() {
@@ -333,3 +334,5 @@ push() {
     echo
     "${rsync_cmd[@]}"
 }
+
+
