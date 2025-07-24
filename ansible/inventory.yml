@@ -22,10 +22,10 @@ base:
 dokuwiki:
   hosts:
     bromine.newtown
-leantime:
+openproject:
   hosts:
     bromine.newtown
-leantime_proxy:
+openproject_proxy:
   hosts:
     newtown
 msmtp:

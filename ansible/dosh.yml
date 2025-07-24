@@ -23,5 +23,5 @@
     newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
     appname: "{{ lookup('ansible.builtin.env', 'PWD') | basename }}"
   tasks:
-    - name: Run /opt/{{appname}}/dosh {{task}} on {{ansible_host}}
+    - name: Run /opt/{{appname}}/dosh {{task}} on {{inventory_hostname}} at {{ansible_host}}
       ansible.builtin.command: "/opt/{{appname}}/dosh {{task}} {{argv1}} {{argv2}} {{argv3}} {{argv4}} {{argv5}} {{argv6}}"

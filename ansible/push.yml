@@ -15,8 +15,7 @@
 # targets, with those targets defined in our inventory.
 
 ---
-- name: Push to remote app server
-  hosts: '{{ appname }}'
+- hosts: '{{ appname }}'
   gather_facts: false
   vars:
     newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
@@ -25,7 +24,7 @@
 
     # Note that this will exclude file globs listed one-to-a-line and
     # prefixed with "- " in .rsync-filter
-    - name: Rsync . with remote, but not caddy
+    - name: Rsync . with {{inventory_hostname}} app server
       ansible.posix.synchronize:
         src: "{{newtown_dir}}/src/deploy/{{appname}}"
         dest: /opt
@@ -40,8 +39,7 @@
           - "--exclude=*.swp"
           - "--exclude=.DS_Store"
 
-- name: Push to remote proxy server
-  hosts: '{{ appname+"_proxy" }}'
+- hosts: '{{ appname+"_proxy" }}'
   gather_facts: false
   vars:
     newtown_dir: "{{ lookup('ansible.builtin.env', 'NEWTOWN_DIR') }}"
@@ -50,7 +48,7 @@
 
     # Note that this will exclude file globs listed one-to-a-line and
     # prefixed with "- " in .rsync-filter
-    - name: Rsync to reverse proxy frontend
+    - name: Rsync . with {{inventory_hostname}} proxy frontend
       ansible.posix.synchronize:
         src: "{{newtown_dir}}/src/deploy/{{appname}}"
         dest: /opt
