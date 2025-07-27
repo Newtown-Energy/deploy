@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Do - The Simplest Build Tool on Earth.
+# Documentation and examples see https://github.com/8gears/do
+#
+set -e
+SCRIPTNAME=`basename "$0"`
+SCRIPTDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+[ "$(basename "$SCRIPTDIR")" = "bin" ] && BASEDIR="${SCRIPTDIR%/*}" || BASEDIR="$SCRIPTDIR"
+export APPNAME=neems-staging
+export USERNAME=${APPNAME}
+export HOMEDIR=/var/lib/${USERNAME}
+cd ${BASEDIR}
+
+# Load some funcs and vars relative to the top-level
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -z "$GIT_ROOT" ]; then
+	source ${BASEDIR}/lib/util.sh
+else
+	source ${GIT_ROOT}/lib/util.sh
+fi
+# Save the original push function before we shadow it
+eval "$(declare -f push | sed '1s/push/_util_push/')"
+ANSIBLE_DIR=${GIT_ROOT}/ansible
+INVENTORY_FNAME=${ANSIBLE_DIR}/inventory.yml
+
+clean() {
+	rm -rf neems-core dist
+}
+
+install() {
+    # Run this on the remote app server
+
+    # Prevent accidental install of app stuff to wrong server
+    which caddy &>/dev/null && { echo "Caddy found. Are you sure this is the app server and not the web router?" >&2; exit 1; }
+
+    _need_root
+
+    _create-system-user ${USERNAME}
+
+    # Move files over to home dir
+    mkdir -p ${HOMEDIR}/staging
+    [ -f .env ] && mv .env ${HOMEDIR}/staging
+    [ -f Rocket.toml ] && mv Rocket.toml ${HOMEDIR}/staging
+    [ -d static ] && mv static ${HOMEDIR}/staging
+    chown -R ${USERNAME}:${USERNAME} ${HOMEDIR}/staging
+
+    # Setup SystemD if there is a service file
+    if [ -f ${BASEDIR}/service ]; then
+	cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
+	systemctl daemon-reload
+	systemctl enable --now ${APPNAME}
+    fi
+    echo "Wrote /etc/systemd/system/${APPNAME}.service"
+
+    # Not needed for this server
+    rm -f caddyfile
+    rm -rf dist
+}
+
+install-caddy() {
+    # This one shoule be run on newtown.energy, not bromine-newtown
+
+    set -e
+
+    _need_root
+
+    # Prevent accidental install of caddy stuff to wrong server
+    which caddy &>/dev/null || { echo "Caddy not found. Install it if this is indeed our web router" >&2; exit 1; }
+
+    _apt-get-update
+    _apt-get-install gettext-base
+
+    # Pull in our .env values if they exist
+    [ ! -f .env ] && cp env.example .env
+    _load-env
+    [ -z "$CADDY_FQDN" ] && { echo "Error: CADDY_FQDN isn't specified in .env" >&2; exit 1; }
+    [ -z "$CADDY_DEST_IP" ] && { echo "Error: CADDY_DEST_IP isn't specified in .env" >&2; exit 1; }
+    [ -z "$CADDY_DEST_PORT" ] && { echo "Error: CADDY_DEST_PORT isn't specified in .env" >&2; exit 1; }
+
+    pushd /etc/caddy > /dev/null
+    mkdir -p available enabled
+    cat ${BASEDIR}/caddyfile | envsubst > available/${APPNAME}.caddyfile
+
+    cd enabled
+    ln -sf ../available/${APPNAME}.caddyfile ${APPNAME}.caddyfile
+
+    systemctl reload caddy
+
+    popd > /dev/null
+
+    # Not needed for this server
+    rm -f service 
+}
+
+push() {
+    # Run this locally to push to remote
+
+    # Build our binary
+    pushd ${NEWTOWN_DIR}/src/neems/core > /dev/null
+    bin/dosh release
+    popd > /dev/null
+    rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-core .
+
+    # Build our static pages
+    pushd ${NEWTOWN_DIR}/src/neems/react > /dev/null
+    bin/dosh build
+    popd > /dev/null
+    rsync -r ${NEWTOWN_DIR}/src/neems/react/dist .
+
+    # Install on remotes
+    _util_push "$@"
+}
+
+uninstall() {
+    # Run this on the remote
+
+    _need_root
+
+    # Remove the service
+    systemctl stop ${APPNAME}
+    systemctl disable ${APPNAME}
+    rm -f /etc/systemd/system/${APPNAME}.service
+    systemctl daemon-reload
+
+    userdel ${USERNAME}
+    [ -d ${HOMEDIR} ] && rm -rf ${HOMEDIR}
+
+    [ -f /etc/caddy/enabled/neems-staging ] && rm -rf /etc/caddy/enabled/neems-staging
+}
+
+
+"$@" # <- execute the task
+[ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
+

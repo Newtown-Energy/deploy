@@ -1,0 +1,23 @@
+${CADDY_FQDN} {
+
+  handle /api/* {
+    reverse_proxy http://${CADDY_DEST_IP}:${CADDY_DEST_PORT} {
+      health_uri /api/1/status
+      health_interval 30s
+      health_timeout 5s
+    }
+  }
+
+  handle {
+    root * /opt/${APPNAME}/dist
+    try_files {path} /index.html
+    file_server
+    encode gzip
+    header {
+      X-Frame-Options DENY
+      X-Content-Type-Options nosniff
+      Referrer-Policy strict-origin-when-cross-origin
+      X-XSS-Protection "1; mode=block"
+    }
+  }
+}

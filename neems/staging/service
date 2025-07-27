@@ -1,0 +1,13 @@
+[Unit]
+Description=${APPNAME}
+After=network.target
+
+[Service]
+Type=simple
+User=${USERNAME}
+Group=${USERNAME}
+WorkingDirectory=${HOMEDIR}/staging
+ExecStart=/opt/${APPNAME}/neems-core
+
+[Install]
+WantedBy=multi-user.target

@@ -69,7 +69,18 @@ _check_exists() {
     [ -z "${!1}" ] && { echo "Error: $1 isn't specified in .env" >&2; exit 1; }
 }
 
-_create_system_user() {
+_create-podman-user() {
+    _create-system-user "$1"
+
+    # Enable lingering for our new user so that it can run podman
+    loginctl enable-linger $(id -u ${username})
+
+    # Create subuid and subgid ranges for the user so that it can run podman
+    usermod --add-subuids 100000-165535 --add-subgids 100000-165535 ${username}
+    sudo -u leantime podman system migrate
+}
+
+_create-system-user() {
 
     # Create a system user for running an app
 
@@ -273,25 +284,54 @@ _replace_or_add_line() {
     
 }
 
-fields() {
+#fields() {
     ## Get our environment variables from Bitwarden
     #
     # Must first do something like: export VAULTID="cda8f639-96d1-463d-ae80-3923f0e05b9a"
-    _get_fields
-    echo "$fields"
+#    _get_fields
+#    echo "$fields"
+#}
+
+_push-to-ansible-hosts() {
+
+    # Ansible names can't have dashes or we get warnings, so use underscores
+    local service_name="${1//-/_}"
+
+    local hosts
+
+    # Get hosts from Ansible inventory
+    hosts=$(get-ansible-service-hosts --resolve "$service_name")
+
+    if [[ -n "$hosts" ]]; then
+        echo "Pushing to '$service_name' hosts: $hosts"
+        _push-one $hosts
+    else
+        echo "Warning: No hosts found for '$service_name' in inventory. Skipping push." >&2
+        return 1
+    fi
 }
 
 push() {
+    if [ -z "$1" ]; then
+	echo "No destination(s) specified, pushing to ansible-listed hosts"
+	_push-to-ansible-hosts "$APPNAME"
+	_push-to-ansible-hosts "${APPNAME}_proxy"
+    else
+        for param in "$@"; do
+            _push-one "$param"
+        done
+    fi
+}
+
+_push-one() {
     # Usage: push hostname
 
     cd ${BASEDIR}
 
     # Set destination target.  Either we use the root account on the
     # remote server or, if $1 is localhost, we just use
-    # /opt/${BASEDIR} as our destination.
-
-    # If $1 is 'localhost', just use /opt/${BASEDIR} as the destination.
-    local dirname=$(basename "${BASEDIR}")
+    # /opt/${APPNAME} as our destination.
+    local dirname=${APPNAME}
 
     local dest
     local target
@@ -304,8 +344,8 @@ push() {
         target="root@$dest"
     fi
 
-# Build rsync command
-    local rsync_cmd=("rsync" "-rLvz" "--progress")
+    # Build rsync command
+    local rsync_cmd=("rsync" "-rLvz" "--progress" "--delete")
 
     # Add standard excludes
     rsync_cmd+=(
@@ -324,14 +364,13 @@ push() {
         rsync_cmd+=("--exclude-from=.push-exclude")
     fi
 
-    # Add source and destination
-    rsync_cmd+=("./" "${target}")
+    GIT_ROOT=$(git rev-parse --show-toplevel)
 
-    echo "Copying local files to $dest"
-    echo
-    # Print the command (with proper quoting for debugging)
-    printf "%q " "${rsync_cmd[@]}"
-    echo
+    # Add source and destination
+    rsync_cmd+=("./" "${GIT_ROOT}/lib" "${target}")
+
+    printf "Copying local files to $dest\n\n"
+    printf "%q \n" "${rsync_cmd[@]}"
     "${rsync_cmd[@]}"
 }
 

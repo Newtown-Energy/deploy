@@ -2,14 +2,22 @@
 # Do - The Simplest Build Tool on Earth.
 # Documentation and examples see https://github.com/8gears/do
 #
+set -e
 SCRIPTNAME=`basename "$0"`
 BASEDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 export APPNAME=$(basename "${BASEDIR}")
 cd ${BASEDIR}
-source lib/util.sh
+
+# Load some funcs and vars relative to the top-level
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || true
+if [ -z "$GIT_ROOT" ]; then
+	source lib/util.sh
+else
+	source ${GIT_ROOT}/lib/util.sh
+fi
 # Save the original push function before we shadow it
 eval "$(declare -f push | sed '1s/push/_util_push/')"
-ANSIBLE_DIR=$NEWTOWN/src/deploy/ansible
+ANSIBLE_DIR=${GIT_ROOT}/ansible
 INVENTORY_FNAME=${ANSIBLE_DIR}/inventory.yml
 
 change-pass() {
@@ -21,6 +29,10 @@ change-pass() {
 }
 
 install() {
+
+    # Prevent accidental install of app stuff to wrong server
+    which caddy &>/dev/null && { echo "Caddy found. Are you sure this is the app server and not the web router?" >&2; exit 1; }
+
     # Install envsubst
     _apt-get-update
     _apt-get-install gettext-base
@@ -48,6 +60,9 @@ install() {
 
 install-caddy() {
     # This one shoule be run on newtown.energy, not bromine.newtown.energy
+
+    # Prevent accidental install of caddy stuff to wrong server
+    which caddy &>/dev/null || { echo "Caddy not found. Install it if this is indeed our web router" >&2; exit 1; }
 
     _need_root
     _load-env
@@ -78,21 +93,7 @@ install-caddy() {
     rm -f service seadoc.yml seafile-server.yml
 }
 
-push() {
 
-    # Here we do our standard push up to servers, but we're pulling
-    # the destinations from our ansible inventory.
-
-    # Process seafile hosts
-    while IFS= read -r host; do
-        [ -n "$host" ] && _util_push "$host"
-    done < <(get-ansible-service-hosts --resolve $APPNAME)
-    
-    # Process seafile_proxy hosts
-    while IFS= read -r host; do
-        [ -n "$host" ] && _util_push "$host"
-    done < <(get-ansible-service-hosts --resolve ${APPNAME}_proxy)
-}
 
 "$@" # <- execute the task
 [ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"

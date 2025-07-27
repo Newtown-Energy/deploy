@@ -4,10 +4,10 @@ all:
     internal:
       hosts:
         newtown:
-          ansible_host: 143.198.120.154
+          ansible_host: newtownenergy.com
           ansible_user: root
         bromine.newtown:
-          ansible_host: 10.1.0.35
+          ansible_host: bromine-newtown
           ansible_user: root
 
     # soltage:
@@ -34,6 +34,12 @@ msmtp:
 msmtp_proxy:
   hosts:
     bromine.newtown
+neems_staging:
+  hosts:
+    bromine.newtown
+neems_staging_proxy:
+  hosts:
+    newtown
 seafile:
   hosts:
     bromine.newtown

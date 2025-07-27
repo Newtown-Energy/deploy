@@ -1,0 +1,9 @@
+## defaults for _all_ profiles
+[default]
+address = "0.0.0.0"
+limits = { form = "64 kB", json = "10 MiB" }
+ip_header = "X-Real-IP"
+port = 7272
+secret_key_file = "secret_key.txt"
+databases = { sqlite_db = { url = "neems-core.sqlite" } }
+
