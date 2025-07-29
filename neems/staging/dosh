@@ -24,7 +24,7 @@ ANSIBLE_DIR=${GIT_ROOT}/ansible
 INVENTORY_FNAME=${ANSIBLE_DIR}/inventory.yml
 
 clean() {
-	rm -rf neems-core dist
+	rm -rf demo-data.sql dist neems-core
 }
 
 install() {
