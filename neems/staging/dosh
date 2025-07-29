@@ -44,6 +44,9 @@ install() {
     [ -d static ] && mv static ${HOMEDIR}/staging
     chown -R ${USERNAME}:${USERNAME} ${HOMEDIR}/staging
 
+    # Load demo data
+    sqlite3 ${HOMEDIR}/staging/neems-core.sqlite < demo-data.sql
+
     # Setup SystemD if there is a service file
     if [ -f ${BASEDIR}/service ]; then
 	cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
@@ -99,6 +102,7 @@ push() {
     pushd ${NEWTOWN_DIR}/src/neems/core > /dev/null
     bin/dosh release
     popd > /dev/null
+    rsync ${NEWTOWN_DIR}/src/neems/core/demo-data.sql .
     rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-core .
 
     # Build our static pages
