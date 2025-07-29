@@ -41,7 +41,7 @@ install() {
     mkdir -p ${HOMEDIR}/staging
     [ -f .env ] && mv .env ${HOMEDIR}/staging
     [ -f Rocket.toml ] && mv Rocket.toml ${HOMEDIR}/staging
-    [ -d static ] && mv static ${HOMEDIR}/staging
+    [ -d static ] && rsync --delete -r static ${HOMEDIR}/staging
     chown -R ${USERNAME}:${USERNAME} ${HOMEDIR}/staging
 
     # Load demo data
@@ -51,7 +51,7 @@ install() {
     if [ -f ${BASEDIR}/service ]; then
 	cat ${BASEDIR}/service | envsubst > /etc/systemd/system/${APPNAME}.service
 	systemctl daemon-reload
-	systemctl enable --now ${APPNAME}
+	systemctl status ${APPNAME} | grep -q "Loaded.*enabled" || systemctl enable --now ${APPNAME}
     fi
     echo "Wrote /etc/systemd/system/${APPNAME}.service"
 
