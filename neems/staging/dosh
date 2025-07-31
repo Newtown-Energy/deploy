@@ -6,7 +6,8 @@ set -e
 SCRIPTNAME=`basename "$0"`
 SCRIPTDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 [ "$(basename "$SCRIPTDIR")" = "bin" ] && BASEDIR="${SCRIPTDIR%/*}" || BASEDIR="$SCRIPTDIR"
-export APPNAME=neems-staging
+export STAGE=$(basename $BASEDIR)
+export APPNAME=neems-${STAGE}
 export USERNAME=${APPNAME}
 export HOMEDIR=/var/lib/${USERNAME}
 cd ${BASEDIR}
@@ -45,7 +46,7 @@ install() {
     chown -R ${USERNAME}:${USERNAME} ${HOMEDIR}/staging
 
     # Load demo data
-    sqlite3 ${HOMEDIR}/staging/neems-core.sqlite < demo-data.sql
+    [ -f demo-data.sql ] && sqlite3 ${HOMEDIR}/staging/neems-core.sqlite < demo-data.sql
 
     # Setup SystemD if there is a service file
     if [ -f ${BASEDIR}/service ]; then
@@ -102,8 +103,14 @@ push() {
     pushd ${NEWTOWN_DIR}/src/neems/core > /dev/null
     bin/dosh release
     popd > /dev/null
-    rsync ${NEWTOWN_DIR}/src/neems/core/demo-data.sql .
     rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-core .
+
+    # Demo data is for demo and staging, but not prod
+    if [ "$STAGE" != prod ]; then
+	rsync ${NEWTOWN_DIR}/src/neems/core/demo-data.sql .
+    else
+	rm -f demo-data.sql
+    fi
 
     # Build our static pages
     pushd ${NEWTOWN_DIR}/src/neems/react > /dev/null
