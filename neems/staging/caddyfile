@@ -1,5 +1,10 @@
 ${CADDY_FQDN} {
 
+  log {
+        output stdout
+        format console
+  }
+
   handle /api/* {
     reverse_proxy http://${CADDY_DEST_IP}:${CADDY_DEST_PORT} {
       health_uri /api/1/status
@@ -23,7 +28,7 @@ ${CADDY_FQDN} {
   }
 
   handle {
-    root * /opt/${APPNAME}/dist
+    root * ${REMOTEDIR}/dist
     try_files {path} /index.html
     file_server
     encode gzip

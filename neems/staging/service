@@ -7,7 +7,7 @@ Type=simple
 User=${USERNAME}
 Group=${USERNAME}
 WorkingDirectory=${HOMEDIR}/staging
-ExecStart=/opt/${APPNAME}/neems-core
+ExecStart=${REMOTEDIR}/neems-core
 
 [Install]
 WantedBy=multi-user.target

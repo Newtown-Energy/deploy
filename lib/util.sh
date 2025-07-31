@@ -328,24 +328,30 @@ _push-one() {
 
     cd ${BASEDIR}
 
-    # Set destination target.  Either we use the root account on the
-    # remote server or, if $1 is localhost, we just use
-    # /opt/${APPNAME} as our destination.
-    local dirname=${APPNAME}
+    # Set destination target dir.  Either we use the root account on the remote
+    # server or, if $1 is localhost, we just use /opt/${APPNAME} as our
+    # destination.  If REMOTEDIR is set, use that.
+    if [ -z "${REMOTEDIR}" ]; then
+        local dirname=${APPNAME}
 
-    local dest
-    local target
-    if [[ "$1" == "localhost" ]]; then
-	_need_root
-        dest="/opt/${dirname}/"
-        target="$dest"
+        local dest
+        local target
+        if [[ "$1" == "localhost" ]]; then
+            _need_root
+            dest="/opt/${dirname}/"
+            target="$dest"
+        else
+            dest="$1:/opt/${dirname}/"
+            target="root@$dest"
+        fi
     else
-        dest="$1:/opt/${dirname}/"
-        target="root@$dest"
+        echo USING ${REMOTEDIR} as remote dir
+        local dest="$1:${REMOTEDIR}"
+        local target="root@$dest"
     fi
 
     # Build rsync command
-    local rsync_cmd=("rsync" "-rLvz" "--progress" "--delete")
+    local rsync_cmd=("rsync" "-rLvz" "--progress" "--delete" "--mkpath")
 
     # Add standard excludes
     rsync_cmd+=(
@@ -369,7 +375,7 @@ _push-one() {
     # Add source and destination
     rsync_cmd+=("./" "${GIT_ROOT}/lib" "${target}")
 
-    printf "Copying local files to $dest\n\n"
+    printf "Copying local files to $target\n\n"
     printf "%q \n" "${rsync_cmd[@]}"
     "${rsync_cmd[@]}"
 }

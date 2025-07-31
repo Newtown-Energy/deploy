@@ -7,7 +7,8 @@ SCRIPTNAME=`basename "$0"`
 SCRIPTDIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 [ "$(basename "$SCRIPTDIR")" = "bin" ] && BASEDIR="${SCRIPTDIR%/*}" || BASEDIR="$SCRIPTDIR"
 export STAGE=$(basename $BASEDIR)
-export APPNAME=neems-${STAGE}
+export REMOTEDIR="/opt/$(basename $(dirname $BASEDIR))/${STAGE}"
+export APPNAME="$(basename $(dirname $BASEDIR))-${STAGE}"
 export USERNAME=${APPNAME}
 export HOMEDIR=/var/lib/${USERNAME}
 cd ${BASEDIR}
@@ -105,7 +106,8 @@ push() {
     popd > /dev/null
     rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-core .
 
-    # Demo data is for demo and staging, but not prod
+    # Demo data is for demo and staging, but not prod 
+    #
     if [ "$STAGE" != prod ]; then
 	rsync ${NEWTOWN_DIR}/src/neems/core/demo-data.sql .
     else
@@ -135,8 +137,10 @@ uninstall() {
 
     userdel ${USERNAME}
     [ -d ${HOMEDIR} ] && rm -rf ${HOMEDIR}
+    echo "User ${USERNAME} deleted"
 
-    [ -f /etc/caddy/enabled/neems-staging ] && rm -rf /etc/caddy/enabled/neems-staging
+    rm -f /etc/caddy/available/${APPNAME}.caddyfile
+    rm -f /etc/caddy/enabled/${APPNAME}.caddyfile
 }
 
 
