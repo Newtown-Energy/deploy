@@ -5,7 +5,21 @@ ${CADDY_FQDN} {
       health_uri /api/1/status
       health_interval 30s
       health_timeout 5s
+      
+      # Add request headers to help backend identify proxy requests
+      header_up X-Forwarded-Proto {scheme}
+      header_up X-Real-IP {remote_host}
     }
+    
+    # Ensure Content-Type is always JSON for API responses
+    header Content-Type "application/json"
+  }
+
+  # Global error handling for API routes
+  handle_errors {
+    @api_error path /api/*
+    header @api_error Content-Type "application/json"
+    respond @api_error "{\"error\": \"API service error\", \"status\": {http.error.status_code}, \"path\": \"{uri}\"}" {http.error.status_code}
   }
 
   handle {
