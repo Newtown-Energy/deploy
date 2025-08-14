@@ -11,6 +11,7 @@ export REMOTEDIR="/opt/$(basename $(dirname $BASEDIR))/${STAGE}"
 export APPNAME="$(basename $(dirname $BASEDIR))-${STAGE}"
 export USERNAME=${APPNAME}
 export HOMEDIR=/var/lib/${USERNAME}
+export STAGEDIR="${HOMEDIR}/${STAGE}"
 cd ${BASEDIR}
 
 # Load some funcs and vars relative to the top-level
@@ -26,7 +27,7 @@ ANSIBLE_DIR=${GIT_ROOT}/ansible
 INVENTORY_FNAME=${ANSIBLE_DIR}/inventory.yml
 
 clean() {
-	rm -rf demo-data.sql dist neems-core
+	rm -rf setup-demo-data demo-data.sql dist neems-api
 }
 
 install() {
@@ -40,14 +41,15 @@ install() {
     _create-system-user ${USERNAME}
 
     # Move files over to home dir
-    mkdir -p ${HOMEDIR}/staging
-    [ -f .env ] && mv .env ${HOMEDIR}/staging
-    [ -f Rocket.toml ] && mv Rocket.toml ${HOMEDIR}/staging
-    [ -d static ] && rsync --delete -r static ${HOMEDIR}/staging
-    chown -R ${USERNAME}:${USERNAME} ${HOMEDIR}/staging
+    mkdir -p ${STAGEDIR}/${STAGE}
+    [ -f .env ] && mv .env ${STAGEDIR}
+    [ -f Rocket.toml ] && mv Rocket.toml ${STAGEDIR}
+    [ -d static ] && rsync --delete -r static ${STAGEDIR}
+    chown -R ${USERNAME}:${USERNAME} ${STAGEDIR}
 
-    # Load demo data
-    [ -f demo-data.sql ] && sqlite3 ${HOMEDIR}/staging/neems-core.sqlite < demo-data.sql
+    # Load demo data, if provided
+    [ -f demo-data.sql ] && sqlite3 ${STAGEDIR}/neems-api.sqlite < demo-data.sql
+    [ -f setup-demo-data ] && ./setup-demo-data ${STAGEDIR}/neems-api.sqlite
 
     # Setup SystemD if there is a service file
     if [ -f ${BASEDIR}/service ]; then
@@ -94,30 +96,80 @@ install-caddy() {
     popd > /dev/null
 
     # Not needed for this server
-    rm -f service 
+    rm -f service
+}
+
+justpush() {
+    _util_push "$@"
 }
 
 push() {
     # Run this locally to push to remote
 
-    # Build our binary
-    pushd ${NEWTOWN_DIR}/src/neems/core > /dev/null
-    bin/dosh release
-    popd > /dev/null
-    rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-core .
+    # Build binary and static pages in parallel
+    local api_pid react_pid
+    local api_status=0 react_status=0
 
-    # Demo data is for demo and staging, but not prod 
+    # Build our binary in background
+    (
+        pushd ${NEWTOWN_DIR}/src/neems/core > /dev/null
+        bin/dosh release
+        popd > /dev/null
+    ) &
+    api_pid=$!
+
+    # Build our static pages in background
+    (
+        pushd ${NEWTOWN_DIR}/src/neems/react > /dev/null
+        bin/dosh build
+        popd > /dev/null
+    ) &
+    react_pid=$!
+
+    # Wait for both builds and capture their exit statuses
+    # If one fails, kill the other
+    while kill -0 $api_pid 2>/dev/null || kill -0 $react_pid 2>/dev/null; do
+        # Check if API build is done
+        if ! kill -0 $api_pid 2>/dev/null; then
+            wait $api_pid
+            api_status=$?
+            if [ $api_status -ne 0 ]; then
+                echo "API build failed, killing React build" >&2
+                kill $react_pid 2>/dev/null
+                wait $react_pid 2>/dev/null
+                exit 1
+            fi
+        fi
+
+        # Check if React build is done
+        if ! kill -0 $react_pid 2>/dev/null; then
+            wait $react_pid
+            react_status=$?
+            if [ $react_status -ne 0 ]; then
+                echo "React build failed, killing API build" >&2
+                kill $api_pid 2>/dev/null
+                wait $api_pid 2>/dev/null
+                exit 1
+            fi
+        fi
+
+        # Small sleep to avoid busy waiting
+        sleep 0.1
+    done
+
+    # Copy built artifacts
+    rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-api .
+    rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-admin .
+    rsync ${NEWTOWN_DIR}/src/neems/core/target/release/neems-data .
+
+    # Demo data is for demo and staging, but not prod
     #
     if [ "$STAGE" != prod ]; then
-	rsync ${NEWTOWN_DIR}/src/neems/core/demo-data.sql .
+	rsync ${NEWTOWN_DIR}/src/neems/core/bin/setup-demo-data .
     else
-	rm -f demo-data.sql
+	rm -f setup-demo-data demo-data.sql
     fi
 
-    # Build our static pages
-    pushd ${NEWTOWN_DIR}/src/neems/react > /dev/null
-    bin/dosh build
-    popd > /dev/null
     rsync -r ${NEWTOWN_DIR}/src/neems/react/dist .
 
     # Install on remotes
@@ -146,4 +198,3 @@ uninstall() {
 
 "$@" # <- execute the task
 [ "$#" -gt 0 ] || printf "Usage:\n\t./${SCRIPTNAME} %s\n" "($(compgen -A function | grep '^[^_]' | paste -sd '|' -))"
-
