@@ -8,6 +8,7 @@ User=${USERNAME}
 Group=${USERNAME}
 WorkingDirectory=${HOMEDIR}/staging
 ExecStart=${REMOTEDIR}/neems-api
+EnvironmentFile=${HOMEDIR}/staging/.env
 
 [Install]
 WantedBy=multi-user.target
