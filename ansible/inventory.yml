@@ -6,6 +6,12 @@ all:
         newtown:
           ansible_host: newtownenergy.com
           ansible_user: root
+          perses_port: 8079
+          perses_domains:
+            - perses.newtown.energy
+            - perses.newtownenergy.com
+          perses_encryption_key_cmd: npass kv encryption-key box/newtown.energy/perses
+          perses_admin_password_cmd: npass box/newtown.energy/perses | head -n 1
         bromine.newtown:
           ansible_host: bromine-newtown
           ansible_user: root
@@ -18,6 +24,10 @@ all:
 base:
   children:
     internal:
+
+monitor:
+  hosts:
+    newtown
 
 dokuwiki:
   hosts:

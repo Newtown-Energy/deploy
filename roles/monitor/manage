@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+
+# Local orchestration script for the monitor role.
+# Runs locally via rexer's before-only mode; uses LC_REXER_HOST and LC_REXER_ARGS.
+#
+# Usage (from deploy/ directory):
+#   runcible monitor roles/monitor/manage install
+#   runcible monitor roles/monitor/manage uninstall
+
+HOST="${LC_REXER_HOST:?LC_REXER_HOST must be set}"
+ACTION="${LC_REXER_ARGS:-${1:-}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+case "$ACTION" in
+    install)
+        echo "Installing victoria-metrics on $HOST..."
+        rexer --sudo "$HOST" -- apt-get install -y victoria-metrics
+
+        echo "Installing perses on $HOST..."
+        rexer "$HOST" "$DEPLOY_DIR/perses/manage" install
+        ;;
+    uninstall)
+        echo "Uninstalling perses from $HOST..."
+        rexer "$HOST" "$DEPLOY_DIR/perses/manage" uninstall
+
+        echo "Removing victoria-metrics from $HOST..."
+        rexer --sudo "$HOST" -- apt-get remove -y victoria-metrics
+        ;;
+    *)
+        echo "Usage: manage <install|uninstall>"
+        exit 1
+        ;;
+esac

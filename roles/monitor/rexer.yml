@@ -1,0 +1,2 @@
+before: ./manage
+before-only: true

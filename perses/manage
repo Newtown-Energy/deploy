@@ -1,0 +1,113 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage perses service
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install/update perses and caddy proxy config
+#   uninstall  Remove caddy proxy config and stop perses
+#
+# Required env vars (set via inventory hostvars, passed by runcible):
+#   PERSES_PORT     - port for perses to listen on (e.g. 8081)
+#   PERSES_DOMAINS  - newline or space-separated list of domains to proxy
+
+# Decode rexer base64-encoded LC_* environment variables in place
+_decode_rexer_env() {
+    for var in $(compgen -v LC_); do
+        local val="${!var}"
+        if [[ "$val" == _b64:* ]]; then
+            export "$var"="$(echo "${val#_b64:}" | base64 -d)"
+        fi
+    done
+}
+_decode_rexer_env
+
+CADDY_AVAILABLE=/etc/caddy/available
+CADDY_ENABLED=/etc/caddy/enabled
+CADDYFILE=$CADDY_AVAILABLE/perses.caddyfile
+PERSES_ENV=/etc/perses/perses.env
+
+install() {
+    PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
+    DOMAINS="${LC_PERSES_DOMAINS:?LC_PERSES_DOMAINS must be set}"
+
+    echo "Installing perses..."
+    apt-get install -y perses
+
+    echo "Writing perses config..."
+    cat > /etc/perses/config.yaml <<'EOF'
+database:
+  file:
+    folder: /var/lib/perses/data
+    extension: json
+plugin:
+  path: /var/lib/perses/plugins
+  archive_paths:
+    - /var/lib/perses/plugins-archive
+EOF
+
+    echo "Configuring perses listen address..."
+    sed -i "s|^PERSES_LISTEN=.*|PERSES_LISTEN=127.0.0.1:${PORT}|" "$PERSES_ENV"
+
+    echo "Restarting perses..."
+    systemctl restart perses
+
+    # Read back the listen address to use for Caddy
+    PERSES_LISTEN=$(grep '^PERSES_LISTEN=' "$PERSES_ENV" | cut -d= -f2-)
+
+    # Convert newline or space-separated domains to comma-separated for Caddy
+    CADDY_DOMAINS=$(echo "$DOMAINS" | tr '\n' ',' | tr ' ' ',' | sed 's/,$//' | sed 's/,,*/,/g' | sed 's/,/, /g')
+
+    echo "Writing Caddy config (proxying $CADDY_DOMAINS -> $PERSES_LISTEN)..."
+    mkdir -p "$CADDY_AVAILABLE" "$CADDY_ENABLED"
+    cat > "$CADDYFILE" <<EOF
+$CADDY_DOMAINS {
+    reverse_proxy $PERSES_LISTEN
+}
+EOF
+
+    ln -sf "$CADDYFILE" "$CADDY_ENABLED/perses.caddyfile"
+
+    echo "Reloading Caddy..."
+    systemctl reload caddy || systemctl restart caddy
+
+    echo "Verifying perses is running..."
+    sleep 2
+    if ! systemctl is-active --quiet perses; then
+        echo "ERROR: perses failed to start"
+        journalctl -u perses -n 20 --no-pager
+        exit 1
+    fi
+
+    FIRST_DOMAIN=$(echo "$DOMAINS" | tr '\n' ' ' | cut -d' ' -f1)
+    echo "Done. Perses available at https://${FIRST_DOMAIN}"
+}
+
+uninstall() {
+    echo "Removing Caddy config..."
+    rm -f "$CADDY_ENABLED/perses.caddyfile"
+    rm -f "$CADDYFILE"
+
+    echo "Reloading Caddy..."
+    systemctl reload caddy || true
+
+    echo "Removing perses package..."
+    apt-get remove -y perses || true
+
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)
+        install
+        ;;
+    uninstall)
+        uninstall
+        ;;
+    *)
+        echo "Usage: manage <install|uninstall>"
+        exit 1
+        ;;
+esac
