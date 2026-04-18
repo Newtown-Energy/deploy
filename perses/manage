@@ -10,10 +10,12 @@ set -euo pipefail
 #   uninstall  Remove caddy proxy config and stop perses
 #
 # Required env vars (set via inventory hostvars, passed by runcible):
-#   PERSES_PORT            - port for perses to listen on (e.g. 8079)
-#   PERSES_DOMAINS         - newline or space-separated list of domains to proxy
-#   PERSES_ENCRYPTION_KEY  - 32-byte AES encryption key (generate: openssl rand -hex 16)
-#   PERSES_ADMIN_PASSWORD  - initial admin user password
+#   PERSES_PORT                  - port for perses to listen on (e.g. 8079)
+#   PERSES_DOMAINS               - newline or space-separated list of domains to proxy
+#   PERSES_ENCRYPTION_KEY        - 32-byte AES encryption key (generate: openssl rand -hex 16)
+#   PERSES_ADMIN_PASSWORD        - initial admin user password
+#   VICTORIA_METRICS_USERNAME    - HTTP basic auth username for victoria-metrics
+#   VICTORIA_METRICS_PASSWORD    - HTTP basic auth password for victoria-metrics
 
 # Decode rexer base64-encoded LC_* environment variables in place
 _decode_rexer_env() {
@@ -45,11 +47,13 @@ _wait_for_perses() {
     done
 }
 
-_write_config() {
+# Write the bootstrap config: auth enabled with wide-open guest permissions and
+# sign-up enabled. This allows the GlobalRole/GlobalRoleBinding endpoints to
+# exist (they only register when native auth is enabled) while letting us create
+# all resources via guest permissions.
+_write_bootstrap_config() {
     local port="$1"
     local encryption_key="$2"
-    local enable_auth="$3"
-    local disable_sign_up="$4"
     cat > /etc/perses/config.yaml <<EOF
 database:
   file:
@@ -60,59 +64,166 @@ plugin:
   archive_paths:
     - /var/lib/perses/plugins-archive
 security:
-  enable_auth: ${enable_auth}
+  enable_auth: true
   encryption_key: "${encryption_key}"
   authentication:
-    disable_sign_up: ${disable_sign_up}
+    disable_sign_up: false
     providers:
       enable_native: true
+  authorization:
+    provider:
+      native:
+        enable: true
+        guest_permissions:
+          - actions:
+              - "*"
+            scopes:
+              - "*"
   cookie:
     secure: true
 EOF
     sed -i "s|^PERSES_LISTEN=.*|PERSES_LISTEN=127.0.0.1:${port}|" "$PERSES_ENV"
 }
 
+# Write the production config: auth enabled, sign-up disabled, narrowed guest
+# permissions (read-only on everything, full CRUD on Project).
+_write_config() {
+    local port="$1"
+    local encryption_key="$2"
+    cat > /etc/perses/config.yaml <<EOF
+database:
+  file:
+    folder: /var/lib/perses/data
+    extension: json
+plugin:
+  path: /var/lib/perses/plugins
+  archive_paths:
+    - /var/lib/perses/plugins-archive
+security:
+  enable_auth: true
+  encryption_key: "${encryption_key}"
+  authentication:
+    disable_sign_up: true
+    providers:
+      enable_native: true
+  authorization:
+    provider:
+      native:
+        enable: true
+        guest_permissions:
+          - actions:
+              - read
+            scopes:
+              - "*"
+          - actions:
+              - create
+              - read
+              - update
+              - delete
+            scopes:
+              - Project
+  cookie:
+    secure: true
+EOF
+    sed -i "s|^PERSES_LISTEN=.*|PERSES_LISTEN=127.0.0.1:${port}|" "$PERSES_ENV"
+}
+
+# POST a resource to the Perses API with optional Bearer token auth.
+# Handles 200/201 (created) and 409 (already exists). Prints a warning for
+# anything else.
+_bootstrap_resource() {
+    local name="$1"
+    local endpoint="$2"
+    local json="$3"
+    local base="$4"
+    local token="${5:-}"
+    local response
+    local auth_args=()
+    if [[ -n "$token" ]]; then
+        auth_args=(-H "Authorization: Bearer ${token}")
+    fi
+    response=$(curl -s -o /tmp/perses-bootstrap.json -w "%{http_code}" \
+        -X POST "${base}${endpoint}" \
+        -H "Content-Type: application/json" \
+        "${auth_args[@]}" \
+        -d "$json")
+    if [[ "$response" == "200" || "$response" == "201" ]]; then
+        echo "  ${name}: created"
+    elif [[ "$response" == "409" ]]; then
+        echo "  ${name}: already exists"
+    else
+        echo "  WARNING: unexpected response for ${name}: HTTP ${response}"
+        cat /tmp/perses-bootstrap.json || true
+    fi
+}
+
 install() {
-    PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
-    DOMAINS="${LC_PERSES_DOMAINS:?LC_PERSES_DOMAINS must be set}"
-    ENCRYPTION_KEY="${LC_PERSES_ENCRYPTION_KEY:?LC_PERSES_ENCRYPTION_KEY must be set}"
-    ADMIN_PASSWORD="${LC_PERSES_ADMIN_PASSWORD:?LC_PERSES_ADMIN_PASSWORD must be set}"
+    local PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
+    local DOMAINS="${LC_PERSES_DOMAINS:?LC_PERSES_DOMAINS must be set}"
+    local ENCRYPTION_KEY="${LC_PERSES_ENCRYPTION_KEY:?LC_PERSES_ENCRYPTION_KEY must be set}"
+    local ADMIN_PASSWORD="${LC_PERSES_ADMIN_PASSWORD:?LC_PERSES_ADMIN_PASSWORD must be set}"
+    local VM_USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
+    local VM_PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
+    local base="http://127.0.0.1:${PORT}"
 
     echo "Installing perses..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" perses
 
-    # Start with auth enabled but sign-up open to bootstrap the admin user
+    # Bootstrap with auth enabled and wide-open guest permissions. This is the
+    # only way to create GlobalRole/GlobalRoleBinding: those endpoints only
+    # exist when the native authorization provider is enabled, which requires
+    # enable_auth: true. Guest permissions allow all authenticated users to do
+    # anything during this phase.
     echo "Starting perses for bootstrap..."
-    _write_config "$PORT" "$ENCRYPTION_KEY" "true" "false"
+    _write_bootstrap_config "$PORT" "$ENCRYPTION_KEY"
     systemctl restart perses
     _wait_for_perses "$PORT"
 
-    # Create admin user if it doesn't already exist
-    echo "Creating admin user..."
-    USER_JSON=$(jq -n --arg pass "$ADMIN_PASSWORD" \
-        '{"kind":"User","metadata":{"name":"admin"},"spec":{"nativeProvider":{"password":$pass}}}')
-    RESPONSE=$(curl -s -o /tmp/perses-user-create.json -w "%{http_code}" \
-        -X POST "http://127.0.0.1:${PORT}/api/v1/users" \
+    # Create admin user via the anonymous sign-up endpoint (no token needed).
+    echo "Creating bootstrap resources..."
+    _bootstrap_resource "admin user" "/api/v1/users" \
+        "$(jq -n --arg pass "$ADMIN_PASSWORD" \
+            '{"kind":"User","metadata":{"name":"admin"},"spec":{"nativeProvider":{"password":$pass}}}')" \
+        "$base"
+
+    # Log in as admin to get a token for the remaining resource creation.
+    local TOKEN
+    TOKEN=$(curl -s -X POST "${base}/api/auth/providers/native/login" \
         -H "Content-Type: application/json" \
-        -d "$USER_JSON")
-    if [[ "$RESPONSE" == "200" || "$RESPONSE" == "201" ]]; then
-        echo "Admin user created."
-    elif [[ "$RESPONSE" == "409" ]]; then
-        echo "Admin user already exists, skipping."
-    else
-        echo "WARNING: unexpected response creating admin user: HTTP $RESPONSE"
-        cat /tmp/perses-user-create.json
+        -d "$(jq -n --arg u "admin" --arg p "$ADMIN_PASSWORD" '{"login":$u,"password":$p}')" \
+        | jq -r '.access_token // empty')
+    if [[ -z "$TOKEN" ]]; then
+        echo "ERROR: failed to log in as admin during bootstrap"
+        exit 1
     fi
 
-    # Restart with sign-up disabled
-    echo "Locking down sign-up..."
-    _write_config "$PORT" "$ENCRYPTION_KEY" "true" "true"
+    _bootstrap_resource "admin GlobalRole" "/api/v1/globalroles" \
+        '{"kind":"GlobalRole","metadata":{"name":"admin"},"spec":{"permissions":[{"actions":["*"],"scopes":["*"]}]}}' \
+        "$base" "$TOKEN"
+
+    _bootstrap_resource "admin GlobalRoleBinding" "/api/v1/globalrolebindings" \
+        '{"kind":"GlobalRoleBinding","metadata":{"name":"admin-binding"},"spec":{"role":"admin","subjects":[{"kind":"User","name":"admin"}]}}' \
+        "$base" "$TOKEN"
+
+    _bootstrap_resource "victoria-metrics GlobalSecret" "/api/v1/globalsecrets" \
+        "$(jq -n --arg u "$VM_USERNAME" --arg p "$VM_PASSWORD" \
+            '{"kind":"GlobalSecret","metadata":{"name":"victoria-metrics-auth"},"spec":{"basicAuth":{"username":$u,"password":$p}}}')" \
+        "$base" "$TOKEN"
+
+    _bootstrap_resource "victoria-metrics GlobalDatasource" "/api/v1/globaldatasources" \
+        "$(jq -n \
+            '{"kind":"GlobalDatasource","metadata":{"name":"victoria-metrics"},"spec":{"default":true,"plugin":{"kind":"PrometheusDatasource","spec":{"proxy":{"kind":"HTTPProxy","spec":{"url":"http://127.0.0.1:8428","allowedEndpoints":[{"endpointPattern":"/api/v1/.*","method":"GET"},{"endpointPattern":"/api/v1/.*","method":"POST"}],"secret":"victoria-metrics-auth"}}}}}}')" \
+        "$base" "$TOKEN"
+
+    # Switch to production config: sign-up disabled, narrowed guest permissions.
+    echo "Switching to production config..."
+    _write_config "$PORT" "$ENCRYPTION_KEY"
     systemctl restart perses
     _wait_for_perses "$PORT"
 
     # Verify auth works by logging in
     echo "Verifying auth..."
-    if ! percli login "http://127.0.0.1:${PORT}" --username admin --password "${ADMIN_PASSWORD}" 2>&1; then
+    if ! percli login "${base}" --username admin --password "${ADMIN_PASSWORD}" 2>&1; then
         echo "ERROR: auth verification failed — could not log in as admin"
         journalctl -u perses -n 20 --no-pager
         exit 1
@@ -120,9 +231,11 @@ install() {
     echo "Auth verified."
 
     # Read back the listen address to use for Caddy
+    local PERSES_LISTEN
     PERSES_LISTEN=$(grep '^PERSES_LISTEN=' "$PERSES_ENV" | cut -d= -f2-)
 
     # Convert newline or space-separated domains to comma-separated for Caddy
+    local CADDY_DOMAINS
     CADDY_DOMAINS=$(echo "$DOMAINS" | tr '\n' ',' | tr ' ' ',' | sed 's/,$//' | sed 's/,,*/,/g' | sed 's/,/, /g')
 
     echo "Writing Caddy config (proxying $CADDY_DOMAINS -> $PERSES_LISTEN)..."
@@ -141,8 +254,36 @@ EOF
     echo "Verifying perses is running..."
     _wait_for_perses "$PORT"
 
+    local FIRST_DOMAIN
     FIRST_DOMAIN=$(echo "$DOMAINS" | tr '\n' ' ' | cut -d' ' -f1)
     echo "Done. Perses available at https://${FIRST_DOMAIN}"
+}
+
+dashboards() {
+    local PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
+    local ADMIN_PASSWORD="${LC_PERSES_ADMIN_PASSWORD:?LC_PERSES_ADMIN_PASSWORD must be set}"
+    local base="http://127.0.0.1:${PORT}"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    percli login "${base}" --username admin --password "${ADMIN_PASSWORD}"
+
+    echo "Creating project..."
+    percli apply -f - <<'EOF'
+kind: Project
+metadata:
+  name: infrastructure
+spec:
+  display:
+    name: "Infrastructure"
+EOF
+
+    echo "Applying dashboards..."
+    for f in "${script_dir}/dashboards/"*.yaml; do
+        echo "  applying $(basename "$f")..."
+        percli apply -f "$f"
+    done
+    echo "Done."
 }
 
 uninstall() {
@@ -163,11 +304,14 @@ case "${1:-}" in
     install)
         install
         ;;
+    dashboards)
+        dashboards
+        ;;
     uninstall)
         uninstall
         ;;
     *)
-        echo "Usage: manage <install|uninstall>"
+        echo "Usage: manage <install|dashboards|uninstall>"
         exit 1
         ;;
 esac

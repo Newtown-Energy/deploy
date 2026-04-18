@@ -9,6 +9,9 @@ Installs and configures victoria-metrics with HTTP basic auth and public listen 
 runcible monitor victoria-metrics/manage install
 runcible monitor victoria-metrics/manage uninstall
 
+# Check status and which hosts are sending data
+runcible monitor victoria-metrics/manage status
+
 # Called from roles/monitor/manage
 rexer "$HOST" "$DEPLOY_DIR/victoria-metrics/manage" install
 ```

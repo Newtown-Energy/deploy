@@ -14,11 +14,13 @@ all:
           perses_admin_password_cmd: npass box/newtown.energy/perses | head -n 1
           victoria_metrics_username_cmd: npass kv username box/newtown.energy/victoria-metrics
           victoria_metrics_password_cmd: npass box/newtown.energy/victoria-metrics | head -n 1
-          victoria_metrics_url_cmd: echo "http://$(npass kv username box/newtown.energy/victoria-metrics):$(npass box/newtown.energy/victoria-metrics | head -n 1)@newtownenergy.com:8428/api/v1/write"
+          victoria_metrics_url: http://newtownenergy.com:8428/api/v1/write
         bromine.newtown:
-          ansible_host: bromine-newtown
+          ansible_host: bromine.newtown
           ansible_user: root
-          victoria_metrics_url_cmd: echo "http://$(npass kv username box/newtown.energy/victoria-metrics):$(npass box/newtown.energy/victoria-metrics | head -n 1)@newtownenergy.com:8428/api/v1/write"
+          victoria_metrics_url: http://newtownenergy.com:8428/api/v1/write
+          victoria_metrics_username_cmd: npass kv username box/newtown.energy/victoria-metrics
+          victoria_metrics_password_cmd: npass box/newtown.energy/victoria-metrics | head -n 1
 
     # soltage:
     #   hosts:
@@ -35,8 +37,8 @@ monitor:
 
 monitored:
   hosts:
-    newtown
-    bromine.newtown
+    newtown:
+    bromine.newtown:
 
 dokuwiki:
   hosts:

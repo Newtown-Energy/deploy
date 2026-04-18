@@ -1,0 +1,115 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage vmagent service
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install/configure vmagent
+#   uninstall  Remove vmagent
+#
+# Required env vars (set via inventory hostvars, passed by runcible):
+#   VICTORIA_METRICS_URL       - remoteWrite URL (e.g. http://monitor-host:8428/api/v1/write)
+#   VICTORIA_METRICS_USERNAME  - HTTP basic auth username
+#   VICTORIA_METRICS_PASSWORD  - HTTP basic auth password
+
+# Decode rexer base64-encoded LC_* environment variables in place
+_decode_rexer_env() {
+    for var in $(compgen -v LC_); do
+        local val="${!var}"
+        if [[ "$val" == _b64:* ]]; then
+            export "$var"="$(echo "${val#_b64:}" | base64 -d)"
+        fi
+    done
+}
+_decode_rexer_env
+
+_check_service() {
+    local svc="$1"
+    local retries=10
+    while ! systemctl is-active --quiet "$svc"; do
+        retries=$((retries - 1))
+        if [[ $retries -eq 0 ]]; then
+            echo "ERROR: $svc failed to start"
+            systemctl status "$svc" --no-pager || true
+            journalctl -u "$svc" -n 20 --no-pager
+            exit 1
+        fi
+        sleep 1
+    done
+    sleep 2
+    if ! systemctl is-active --quiet "$svc"; then
+        echo "ERROR: $svc started but then crashed"
+        systemctl status "$svc" --no-pager || true
+        journalctl -u "$svc" -n 20 --no-pager
+        exit 1
+    fi
+}
+
+_wait_for_http() {
+    local url="$1"
+    local retries=10
+    while ! curl -s "$url" > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [[ $retries -eq 0 ]]; then
+            echo "ERROR: $url did not become reachable"
+            exit 1
+        fi
+        sleep 1
+    done
+}
+
+install() {
+    local VICTORIA_METRICS_URL="${LC_VICTORIA_METRICS_URL:?LC_VICTORIA_METRICS_URL must be set}"
+    local VICTORIA_METRICS_USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
+    local VICTORIA_METRICS_PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
+
+    echo "Installing vmagent..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" vmagent
+
+    echo "Configuring vmagent..."
+    cat > /etc/vmagent/vmagent.env <<EOF
+REMOTE_WRITE_URL=${VICTORIA_METRICS_URL}
+VM_REMOTE_USERNAME=${VICTORIA_METRICS_USERNAME}
+EOF
+    echo -n "${VICTORIA_METRICS_PASSWORD}" > /etc/vmagent/remote-password
+    chmod 640 /etc/vmagent/remote-password
+    chown vmagent:vmagent /etc/vmagent/remote-password
+
+    echo "Restarting vmagent..."
+    systemctl daemon-reload
+    systemctl restart vmagent
+
+    echo "Verifying vmagent..."
+    _check_service vmagent
+    _wait_for_http "http://127.0.0.1:8429/health"
+    echo "vmagent: ok"
+
+    echo "Done."
+}
+
+status() {
+    echo "=== systemctl status ==="
+    systemctl status vmagent --no-pager || true
+    echo ""
+    echo "=== recent logs ==="
+    journalctl -u vmagent -n 30 --no-pager
+}
+
+uninstall() {
+    echo "Removing vmagent..."
+    systemctl stop vmagent || true
+    apt-get remove -y vmagent || true
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)   install ;;
+    status)    status ;;
+    uninstall) uninstall ;;
+    *)
+        echo "Usage: manage <install|status|uninstall>"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,435 @@
+kind: Dashboard
+metadata:
+  name: node-overview
+  project: infrastructure
+spec:
+  display:
+    name: "Node Overview"
+  duration: "1h"
+  refreshInterval: "30s"
+  variables:
+    - kind: ListVariable
+      spec:
+        name: host
+        display:
+          name: "Host"
+        defaultValue: "$__all"
+        allowAllValue: true
+        allowMultiple: true
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            datasource:
+              kind: PrometheusDatasource
+              name: victoria-metrics
+            labelName: host
+            matchers:
+              - up
+  panels:
+    cpu_usage:
+      kind: Panel
+      spec:
+        display:
+          name: "CPU Usage"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: percent-decimal
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: '1 - avg by(host) (rate(node_cpu_seconds_total{mode="idle",host=~"$host"}[5m]))'
+                  seriesNameFormat: "{{host}}"
+
+    load_average:
+      kind: Panel
+      spec:
+        display:
+          name: "Load Average"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_load1{host=~"$host"}'
+                  seriesNameFormat: "{{host}} 1m"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_load5{host=~"$host"}'
+                  seriesNameFormat: "{{host}} 5m"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_load15{host=~"$host"}'
+                  seriesNameFormat: "{{host}} 15m"
+
+    memory_usage:
+      kind: Panel
+      spec:
+        display:
+          name: "Memory Usage"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: percent-decimal
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: '1 - (node_memory_MemAvailable_bytes{host=~"$host"} / node_memory_MemTotal_bytes{host=~"$host"})'
+                  seriesNameFormat: "{{host}}"
+
+    memory_breakdown:
+      kind: Panel
+      spec:
+        display:
+          name: "Memory Breakdown"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: bytes
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_memory_MemTotal_bytes{host=~"$host"} - node_memory_MemAvailable_bytes{host=~"$host"}'
+                  seriesNameFormat: "{{host}} used"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_memory_Cached_bytes{host=~"$host"}'
+                  seriesNameFormat: "{{host}} cached"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_memory_Buffers_bytes{host=~"$host"}'
+                  seriesNameFormat: "{{host}} buffers"
+
+    disk_read:
+      kind: Panel
+      spec:
+        display:
+          name: "Disk Read"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: bytes/sec
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'rate(node_disk_read_bytes_total{host=~"$host"}[5m])'
+                  seriesNameFormat: "{{host}} {{device}}"
+
+    disk_write:
+      kind: Panel
+      spec:
+        display:
+          name: "Disk Write"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: bytes/sec
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'rate(node_disk_written_bytes_total{host=~"$host"}[5m])'
+                  seriesNameFormat: "{{host}} {{device}}"
+
+    filesystem_usage:
+      kind: Panel
+      spec:
+        display:
+          name: "Filesystem Usage"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: percent-decimal
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: '1 - (node_filesystem_avail_bytes{host=~"$host",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{host=~"$host",fstype!~"tmpfs|overlay|squashfs"})'
+                  seriesNameFormat: "{{host}} {{mountpoint}}"
+
+    network_receive:
+      kind: Panel
+      spec:
+        display:
+          name: "Network Receive"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: bytes/sec
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'rate(node_network_receive_bytes_total{host=~"$host",device!="lo"}[5m])'
+                  seriesNameFormat: "{{host}} {{device}}"
+
+    network_transmit:
+      kind: Panel
+      spec:
+        display:
+          name: "Network Transmit"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: bytes/sec
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'rate(node_network_transmit_bytes_total{host=~"$host",device!="lo"}[5m])'
+                  seriesNameFormat: "{{host}} {{device}}"
+
+    uptime:
+      kind: Panel
+      spec:
+        display:
+          name: "Uptime"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+            yAxis:
+              format:
+                unit: seconds
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'time() - node_boot_time_seconds{host=~"$host"}'
+                  seriesNameFormat: "{{host}}"
+
+    open_fds:
+      kind: Panel
+      spec:
+        display:
+          name: "Open File Descriptors"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'node_filefd_allocated{host=~"$host"}'
+                  seriesNameFormat: "{{host}}"
+
+    context_switches:
+      kind: Panel
+      spec:
+        display:
+          name: "Context Switches / sec"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'rate(node_context_switches_total{host=~"$host"}[5m])'
+                  seriesNameFormat: "{{host}}"
+
+  layouts:
+    - kind: Grid
+      spec:
+        items:
+          - x: 0
+            y: 0
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/cpu_usage"
+          - x: 12
+            y: 0
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/load_average"
+          - x: 0
+            y: 8
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/memory_usage"
+          - x: 12
+            y: 8
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/memory_breakdown"
+          - x: 0
+            y: 16
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/disk_read"
+          - x: 12
+            y: 16
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/disk_write"
+          - x: 0
+            y: 24
+            width: 24
+            height: 8
+            content:
+              $ref: "#/spec/panels/filesystem_usage"
+          - x: 0
+            y: 32
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/network_receive"
+          - x: 12
+            y: 32
+            width: 12
+            height: 8
+            content:
+              $ref: "#/spec/panels/network_transmit"
+          - x: 0
+            y: 40
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/uptime"
+          - x: 8
+            y: 40
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/open_fds"
+          - x: 16
+            y: 40
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/context_switches"

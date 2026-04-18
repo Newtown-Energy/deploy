@@ -7,9 +7,10 @@ set -euo pipefail
 #
 # Commands:
 #   install    Install/configure victoria-metrics
+#   status     Show running status and which hosts are sending data
 #   uninstall  Remove victoria-metrics
 #
-# Required env vars (set via inventory hostvars, passed by runcible):
+# Required env vars for install (set via inventory hostvars, passed by runcible):
 #   VICTORIA_METRICS_USERNAME  - HTTP basic auth username
 #   VICTORIA_METRICS_PASSWORD  - HTTP basic auth password
 
@@ -24,15 +25,36 @@ _decode_rexer_env() {
 }
 _decode_rexer_env
 
-USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
-PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
-
-_wait_for_victoria_metrics() {
+_check_service() {
+    local svc="$1"
     local retries=10
-    while ! curl -s -u "${USERNAME}:${PASSWORD}" "http://127.0.0.1:8428/health" > /dev/null 2>&1; do
+    while ! systemctl is-active --quiet "$svc"; do
         retries=$((retries - 1))
         if [[ $retries -eq 0 ]]; then
-            echo "ERROR: victoria-metrics failed to start"
+            echo "ERROR: $svc failed to start"
+            systemctl status "$svc" --no-pager || true
+            journalctl -u "$svc" -n 20 --no-pager
+            exit 1
+        fi
+        sleep 1
+    done
+    sleep 2
+    if ! systemctl is-active --quiet "$svc"; then
+        echo "ERROR: $svc started but then crashed"
+        systemctl status "$svc" --no-pager || true
+        journalctl -u "$svc" -n 20 --no-pager
+        exit 1
+    fi
+}
+
+_wait_for_victoria_metrics() {
+    local auth="$1"
+    local retries=10
+    while ! curl -s -u "$auth" "http://127.0.0.1:8428/health" > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [[ $retries -eq 0 ]]; then
+            echo "ERROR: victoria-metrics HTTP endpoint not reachable"
+            systemctl status victoria-metrics --no-pager || true
             journalctl -u victoria-metrics -n 20 --no-pager
             exit 1
         fi
@@ -41,6 +63,9 @@ _wait_for_victoria_metrics() {
 }
 
 install() {
+    local USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
+    local PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
+
     echo "Installing victoria-metrics..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" victoria-metrics
 
@@ -57,7 +82,8 @@ install() {
     systemctl restart victoria-metrics
 
     echo "Verifying victoria-metrics is running..."
-    _wait_for_victoria_metrics
+    _check_service victoria-metrics
+    _wait_for_victoria_metrics "${USERNAME}:${PASSWORD}"
 
     echo "Verifying auth..."
     if ! curl -sf -u "${USERNAME}:${PASSWORD}" "http://127.0.0.1:8428/health" > /dev/null; then
@@ -69,6 +95,47 @@ install() {
     echo "Done."
 }
 
+status() {
+    local env_file="/etc/victoria-metrics/victoria-metrics.env"
+    local pw_file="/etc/victoria-metrics/http-password"
+
+    if [[ ! -f "$env_file" ]] || [[ ! -f "$pw_file" ]]; then
+        echo "ERROR: victoria-metrics config not found — is it installed?"
+        exit 1
+    fi
+
+    set -a; source "$env_file"; set +a
+    local password
+    password=$(cat "$pw_file")
+    local auth="${VM_HTTP_USERNAME}:${password}"
+    local base="http://127.0.0.1:8428"
+
+    if ! curl -sf -u "$auth" "${base}/health" > /dev/null 2>&1; then
+        echo "victoria-metrics: NOT RUNNING"
+        systemctl status victoria-metrics --no-pager || true
+        exit 1
+    fi
+    echo "victoria-metrics: running"
+
+    local result
+    result=$(curl -sf -u "$auth" "${base}/api/v1/label/host/values" 2>/dev/null) || {
+        echo "ERROR: could not query metrics API"
+        exit 1
+    }
+
+    local hosts
+    hosts=$(echo "$result" | python3 -c "import json,sys; [print(h) for h in json.load(sys.stdin).get('data',[])]" 2>/dev/null | sort)
+
+    if [[ -z "$hosts" ]]; then
+        echo "No hosts sending data yet"
+    else
+        echo "Receiving data from:"
+        while IFS= read -r host; do
+            echo "  $host"
+        done <<< "$hosts"
+    fi
+}
+
 uninstall() {
     echo "Removing victoria-metrics..."
     systemctl stop victoria-metrics || true
@@ -78,9 +145,10 @@ uninstall() {
 
 case "${1:-}" in
     install)   install ;;
+    status)    status ;;
     uninstall) uninstall ;;
     *)
-        echo "Usage: manage <install|uninstall>"
+        echo "Usage: manage <install|status|uninstall>"
         exit 1
         ;;
 esac
