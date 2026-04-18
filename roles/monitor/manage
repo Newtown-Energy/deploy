@@ -16,7 +16,7 @@ DEPLOY_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 case "$ACTION" in
     install)
         echo "Installing victoria-metrics on $HOST..."
-        rexer --sudo "$HOST" -- apt-get install -y victoria-metrics
+        rexer "$HOST" "$DEPLOY_DIR/victoria-metrics/manage" install
 
         echo "Installing perses on $HOST..."
         rexer "$HOST" "$DEPLOY_DIR/perses/manage" install
@@ -25,8 +25,8 @@ case "$ACTION" in
         echo "Uninstalling perses from $HOST..."
         rexer "$HOST" "$DEPLOY_DIR/perses/manage" uninstall
 
-        echo "Removing victoria-metrics from $HOST..."
-        rexer --sudo "$HOST" -- apt-get remove -y victoria-metrics
+        echo "Uninstalling victoria-metrics from $HOST..."
+        rexer "$HOST" "$DEPLOY_DIR/victoria-metrics/manage" uninstall
         ;;
     *)
         echo "Usage: manage <install|uninstall>"
