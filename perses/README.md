@@ -20,6 +20,10 @@ Set these in your `inventory.yml` for each host running perses:
 |---|---|---|
 | `perses_port` | Port for perses to listen on | `8079` |
 | `perses_domains` | List of domains to proxy | see below |
+| `perses_encryption_key_cmd` | Command to retrieve the 32-byte AES encryption key | `npass kv encryption-key box/...` |
+| `perses_admin_password_cmd` | Command to retrieve the initial admin password | `npass box/... \| head -n 1` |
+
+Generate the key with `openssl rand -hex 16` (produces a 32-character hex string) and store it in pass before deploying.
 
 Example:
 

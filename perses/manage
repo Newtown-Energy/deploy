@@ -10,8 +10,10 @@ set -euo pipefail
 #   uninstall  Remove caddy proxy config and stop perses
 #
 # Required env vars (set via inventory hostvars, passed by runcible):
-#   PERSES_PORT     - port for perses to listen on (e.g. 8081)
-#   PERSES_DOMAINS  - newline or space-separated list of domains to proxy
+#   PERSES_PORT            - port for perses to listen on (e.g. 8079)
+#   PERSES_DOMAINS         - newline or space-separated list of domains to proxy
+#   PERSES_ENCRYPTION_KEY  - 32-byte AES encryption key (generate: openssl rand -hex 16)
+#   PERSES_ADMIN_PASSWORD  - initial admin user password
 
 # Decode rexer base64-encoded LC_* environment variables in place
 _decode_rexer_env() {
@@ -29,15 +31,26 @@ CADDY_ENABLED=/etc/caddy/enabled
 CADDYFILE=$CADDY_AVAILABLE/perses.caddyfile
 PERSES_ENV=/etc/perses/perses.env
 
-install() {
-    PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
-    DOMAINS="${LC_PERSES_DOMAINS:?LC_PERSES_DOMAINS must be set}"
+_wait_for_perses() {
+    local port="$1"
+    local retries=10
+    while ! curl -s "http://127.0.0.1:${port}/api/v1/health" > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [[ $retries -eq 0 ]]; then
+            echo "ERROR: perses failed to start"
+            journalctl -u perses -n 20 --no-pager
+            exit 1
+        fi
+        sleep 1
+    done
+}
 
-    echo "Installing perses..."
-    apt-get install -y perses
-
-    echo "Writing perses config..."
-    cat > /etc/perses/config.yaml <<'EOF'
+_write_config() {
+    local port="$1"
+    local encryption_key="$2"
+    local enable_auth="$3"
+    local disable_sign_up="$4"
+    cat > /etc/perses/config.yaml <<EOF
 database:
   file:
     folder: /var/lib/perses/data
@@ -46,13 +59,65 @@ plugin:
   path: /var/lib/perses/plugins
   archive_paths:
     - /var/lib/perses/plugins-archive
+security:
+  enable_auth: ${enable_auth}
+  encryption_key: "${encryption_key}"
+  authentication:
+    disable_sign_up: ${disable_sign_up}
+    providers:
+      enable_native: true
+  cookie:
+    secure: true
 EOF
+    sed -i "s|^PERSES_LISTEN=.*|PERSES_LISTEN=127.0.0.1:${port}|" "$PERSES_ENV"
+}
 
-    echo "Configuring perses listen address..."
-    sed -i "s|^PERSES_LISTEN=.*|PERSES_LISTEN=127.0.0.1:${PORT}|" "$PERSES_ENV"
+install() {
+    PORT="${LC_PERSES_PORT:?LC_PERSES_PORT must be set}"
+    DOMAINS="${LC_PERSES_DOMAINS:?LC_PERSES_DOMAINS must be set}"
+    ENCRYPTION_KEY="${LC_PERSES_ENCRYPTION_KEY:?LC_PERSES_ENCRYPTION_KEY must be set}"
+    ADMIN_PASSWORD="${LC_PERSES_ADMIN_PASSWORD:?LC_PERSES_ADMIN_PASSWORD must be set}"
 
-    echo "Restarting perses..."
+    echo "Installing perses..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" perses
+
+    # Start with auth enabled but sign-up open to bootstrap the admin user
+    echo "Starting perses for bootstrap..."
+    _write_config "$PORT" "$ENCRYPTION_KEY" "true" "false"
     systemctl restart perses
+    _wait_for_perses "$PORT"
+
+    # Create admin user if it doesn't already exist
+    echo "Creating admin user..."
+    USER_JSON=$(jq -n --arg pass "$ADMIN_PASSWORD" \
+        '{"kind":"User","metadata":{"name":"admin"},"spec":{"nativeProvider":{"password":$pass}}}')
+    RESPONSE=$(curl -s -o /tmp/perses-user-create.json -w "%{http_code}" \
+        -X POST "http://127.0.0.1:${PORT}/api/v1/users" \
+        -H "Content-Type: application/json" \
+        -d "$USER_JSON")
+    if [[ "$RESPONSE" == "200" || "$RESPONSE" == "201" ]]; then
+        echo "Admin user created."
+    elif [[ "$RESPONSE" == "409" ]]; then
+        echo "Admin user already exists, skipping."
+    else
+        echo "WARNING: unexpected response creating admin user: HTTP $RESPONSE"
+        cat /tmp/perses-user-create.json
+    fi
+
+    # Restart with sign-up disabled
+    echo "Locking down sign-up..."
+    _write_config "$PORT" "$ENCRYPTION_KEY" "true" "true"
+    systemctl restart perses
+    _wait_for_perses "$PORT"
+
+    # Verify auth works by logging in
+    echo "Verifying auth..."
+    if ! percli login "http://127.0.0.1:${PORT}" --username admin --password "${ADMIN_PASSWORD}" 2>&1; then
+        echo "ERROR: auth verification failed — could not log in as admin"
+        journalctl -u perses -n 20 --no-pager
+        exit 1
+    fi
+    echo "Auth verified."
 
     # Read back the listen address to use for Caddy
     PERSES_LISTEN=$(grep '^PERSES_LISTEN=' "$PERSES_ENV" | cut -d= -f2-)
@@ -74,12 +139,7 @@ EOF
     systemctl reload caddy || systemctl restart caddy
 
     echo "Verifying perses is running..."
-    sleep 2
-    if ! systemctl is-active --quiet perses; then
-        echo "ERROR: perses failed to start"
-        journalctl -u perses -n 20 --no-pager
-        exit 1
-    fi
+    _wait_for_perses "$PORT"
 
     FIRST_DOMAIN=$(echo "$DOMAINS" | tr '\n' ' ' | cut -d' ' -f1)
     echo "Done. Perses available at https://${FIRST_DOMAIN}"
