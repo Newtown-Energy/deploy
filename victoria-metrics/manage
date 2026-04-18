@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage victoria-metrics service
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install/configure victoria-metrics
+#   uninstall  Remove victoria-metrics
+#
+# Required env vars (set via inventory hostvars, passed by runcible):
+#   VICTORIA_METRICS_USERNAME  - HTTP basic auth username
+#   VICTORIA_METRICS_PASSWORD  - HTTP basic auth password
+
+# Decode rexer base64-encoded LC_* environment variables in place
+_decode_rexer_env() {
+    for var in $(compgen -v LC_); do
+        local val="${!var}"
+        if [[ "$val" == _b64:* ]]; then
+            export "$var"="$(echo "${val#_b64:}" | base64 -d)"
+        fi
+    done
+}
+_decode_rexer_env
+
+USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
+PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
+
+_wait_for_victoria_metrics() {
+    local retries=10
+    while ! curl -s -u "${USERNAME}:${PASSWORD}" "http://127.0.0.1:8428/health" > /dev/null 2>&1; do
+        retries=$((retries - 1))
+        if [[ $retries -eq 0 ]]; then
+            echo "ERROR: victoria-metrics failed to start"
+            journalctl -u victoria-metrics -n 20 --no-pager
+            exit 1
+        fi
+        sleep 1
+    done
+}
+
+install() {
+    echo "Installing victoria-metrics..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" victoria-metrics
+
+    echo "Configuring victoria-metrics..."
+    sed -i "s|^LISTEN_ADDR=.*|LISTEN_ADDR=:8428|" /etc/victoria-metrics/victoria-metrics.env
+    sed -i "s|^VM_HTTP_USERNAME=.*|VM_HTTP_USERNAME=${USERNAME}|" /etc/victoria-metrics/victoria-metrics.env
+
+    echo -n "${PASSWORD}" > /etc/victoria-metrics/http-password
+    chmod 640 /etc/victoria-metrics/http-password
+    chown victoria-metrics:victoria-metrics /etc/victoria-metrics/http-password
+
+    echo "Restarting victoria-metrics..."
+    systemctl daemon-reload
+    systemctl restart victoria-metrics
+
+    echo "Verifying victoria-metrics is running..."
+    _wait_for_victoria_metrics
+
+    echo "Verifying auth..."
+    if ! curl -sf -u "${USERNAME}:${PASSWORD}" "http://127.0.0.1:8428/health" > /dev/null; then
+        echo "ERROR: auth verification failed"
+        exit 1
+    fi
+    echo "Auth verified."
+
+    echo "Done."
+}
+
+uninstall() {
+    echo "Removing victoria-metrics..."
+    systemctl stop victoria-metrics || true
+    apt-get remove -y victoria-metrics || true
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)   install ;;
+    uninstall) uninstall ;;
+    *)
+        echo "Usage: manage <install|uninstall>"
+        exit 1
+        ;;
+esac
