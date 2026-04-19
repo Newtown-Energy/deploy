@@ -16,6 +16,11 @@ all:
           victoria_metrics_password_cmd: npass box/newtown.energy/victoria-metrics | head -n 1
           victoria_metrics_retention: 3d
           victoria_metrics_url: http://newtownenergy.com:8428/api/v1/write
+          msmtpq_password_cmd: npass do-not-reply@newtownenergy.com | head -n 1
+          msmtpq_from:
+            - do-not-reply@newtownenergy.com
+            - bot@newtownenergy.com
+            - james@newtownenergy.com
         bromine.newtown:
           ansible_host: bromine.newtown
           ansible_user: root

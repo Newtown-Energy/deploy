@@ -1,0 +1,81 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage newtown msmtpq: system-wide outbound email via MXroute
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install/configure newtown-msmtpq
+#   uninstall  Remove configuration (leaves package installed)
+#
+# Required env vars (set via inventory hostvars, passed by runcible):
+#   MSMTPQ_PASSWORD  - SMTP account password
+#   MSMTPQ_FROM      - newline-separated list of allowed From addresses
+
+# Decode rexer base64-encoded LC_* environment variables in place
+_decode_rexer_env() {
+    for var in $(compgen -v LC_); do
+        local val="${!var}"
+        if [[ "$val" == _b64:* ]]; then
+            export "$var"="$(echo "${val#_b64:}" | base64 -d)"
+        fi
+    done
+}
+_decode_rexer_env
+
+install() {
+    local PASSWORD="${LC_MSMTPQ_PASSWORD:?LC_MSMTPQ_PASSWORD must be set}"
+    local FROM="${LC_MSMTPQ_FROM:?LC_MSMTPQ_FROM must be set}"
+
+    echo "Installing newtown-msmtpq..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" newtown-msmtpq
+
+    echo "Writing msmtprc..."
+    rm -f /etc/msmtprc
+    cat > /etc/msmtprc <<EOF
+defaults
+auth           on
+tls            on
+tls_starttls   on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        /var/log/msmtp.log
+
+account default
+host           witcher.mxrouting.net
+port           2525
+from           do-not-reply@newtownenergy.com
+user           do-not-reply@newtownenergy.com
+passwordeval   "cat /etc/msmtpq/credentials"
+EOF
+    chmod 644 /etc/msmtprc
+
+    echo "Writing credentials..."
+    echo -n "${PASSWORD}" > /etc/msmtpq/credentials
+    chmod 600 /etc/msmtpq/credentials
+
+    echo "Writing from-map..."
+    rm -f /etc/msmtpq/from-map
+    echo "${FROM}" > /etc/msmtpq/from-map
+    chmod 644 /etc/msmtpq/from-map
+
+    echo "Done."
+}
+
+uninstall() {
+    echo "Removing msmtpq configuration..."
+    rm -f /etc/msmtprc /etc/msmtpq/credentials /etc/msmtpq/from-map
+    # Restore symlinks to examples
+    ln -sf /etc/msmtprc.example /etc/msmtprc
+    ln -sf /etc/msmtpq/from-map.example /etc/msmtpq/from-map
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)   install ;;
+    uninstall) uninstall ;;
+    *)
+        echo "Usage: manage <install|uninstall>"
+        exit 1
+        ;;
+esac
