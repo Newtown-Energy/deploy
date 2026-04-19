@@ -6,8 +6,9 @@ set -euo pipefail
 # Usage: manage <command>
 #
 # Commands:
-#   install    Install/configure newtown-msmtpq
+#   install    Install/configure newtown-sendmail
 #   uninstall  Remove configuration (leaves package installed)
+#   test       Send test emails and print mailsac.com inbox URL
 #
 # Required env vars (set via inventory hostvars, passed by runcible):
 #   MSMTPQ_PASSWORD  - SMTP account password
@@ -28,8 +29,8 @@ install() {
     local PASSWORD="${LC_MSMTPQ_PASSWORD:?LC_MSMTPQ_PASSWORD must be set}"
     local FROM="${LC_MSMTPQ_FROM:?LC_MSMTPQ_FROM must be set}"
 
-    echo "Installing newtown-msmtpq..."
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" newtown-msmtpq
+    echo "Installing newtown-sendmail..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" newtown-sendmail
 
     echo "Writing msmtprc..."
     rm -f /etc/msmtprc
@@ -59,12 +60,20 @@ EOF
     echo "${FROM}" > /etc/msmtpq/from-map
     chmod 644 /etc/msmtpq/from-map
 
+    echo "Installing test-send..."
+    cp "$(dirname "$0")/test-send" /etc/msmtpq/test-send
+    chmod 755 /etc/msmtpq/test-send
+
     echo "Done."
+}
+
+test() {
+    exec /etc/msmtpq/test-send
 }
 
 uninstall() {
     echo "Removing msmtpq configuration..."
-    rm -f /etc/msmtprc /etc/msmtpq/credentials /etc/msmtpq/from-map
+    rm -f /etc/msmtprc /etc/msmtpq/credentials /etc/msmtpq/from-map /etc/msmtpq/test-send
     # Restore symlinks to examples
     ln -sf /etc/msmtprc.example /etc/msmtprc
     ln -sf /etc/msmtpq/from-map.example /etc/msmtpq/from-map
@@ -74,8 +83,9 @@ uninstall() {
 case "${1:-}" in
     install)   install ;;
     uninstall) uninstall ;;
+    test)      test ;;
     *)
-        echo "Usage: manage <install|uninstall>"
+        echo "Usage: manage <install|uninstall|test>"
         exit 1
         ;;
 esac

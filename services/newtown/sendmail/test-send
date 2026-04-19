@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+# Send test emails from do-not-reply and bot via the local sendmail wrapper.
+# Prints a mailsac.com inbox URL to check delivery.
+
+RANDOM_ID=$(head -c 8 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8)
+TO="newtown-test-${RANDOM_ID}@mailsac.com"
+
+echo "Sending test emails to ${TO}..."
+
+printf "From: do-not-reply@newtownenergy.com\nTo: %s\nSubject: Test from do-not-reply\n\nTest email from do-not-reply@newtownenergy.com\n" "$TO" \
+    | /usr/sbin/sendmail -t
+echo "  do-not-reply: sent"
+
+printf "From: bot@newtownenergy.com\nTo: %s\nSubject: Test from bot\n\nTest email from bot@newtownenergy.com\n" "$TO" \
+    | /usr/sbin/sendmail -t
+echo "  bot: sent"
+
+echo ""
+echo "Inbox: https://mailsac.com/inbox/${TO}"

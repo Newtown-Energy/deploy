@@ -33,9 +33,14 @@ all:
     #     fiftyfive_drive:
     #       ansible_host: 8.8.8.8
     #       ansible_user: root
+    
 base:
   children:
     internal:
+
+newtown-sendmail:
+  hosts:
+    newtown
 
 monitor:
   hosts:
