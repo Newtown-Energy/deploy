@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Manage newtown msmtpq: system-wide outbound email via MXroute
+# Manage newtown-msmtp: system-wide outbound email via MXroute
 #
 # Usage: manage <command>
 #
 # Commands:
-#   install    Install/configure newtown-sendmail
+#   install    Install/configure newtown-msmtp
 #   uninstall  Remove configuration (leaves package installed)
 #   test       Send test emails and print mailsac.com inbox URL
 #
@@ -29,8 +29,8 @@ install() {
     local PASSWORD="${LC_MSMTPQ_PASSWORD:?LC_MSMTPQ_PASSWORD must be set}"
     local FROM="${LC_MSMTPQ_FROM:?LC_MSMTPQ_FROM must be set}"
 
-    echo "Installing newtown-sendmail..."
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" newtown-sendmail
+    echo "Installing newtown-msmtp..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" newtown-msmtp
 
     echo "Writing msmtprc..."
     rm -f /etc/msmtprc

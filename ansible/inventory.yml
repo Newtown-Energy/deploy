@@ -38,7 +38,7 @@ base:
   children:
     internal:
 
-newtown-sendmail:
+newtown-msmtp:
   hosts:
     newtown
 
