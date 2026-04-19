@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Collect SMART metrics and write prometheus textfile format for node_exporter."""
+
+import json
+import os
+import subprocess
+
+TEXTFILE_DIR = "/var/lib/prometheus/node-exporter"
+OUTPUT_FILE = os.path.join(TEXTFILE_DIR, "smartmon.prom")
+
+
+def smartctl(*args):
+    return subprocess.run(
+        ["smartctl"] + list(args),
+        capture_output=True, text=True
+    )
+
+
+def get_devices():
+    result = smartctl("--scan", "--json")
+    try:
+        data = json.loads(result.stdout)
+        return [d["name"] for d in data.get("devices", [])]
+    except (json.JSONDecodeError, KeyError):
+        return []
+
+
+def get_smart_data(device):
+    result = smartctl("--json", "-H", "-A", "-i", device)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def attr_raw(attrs, attr_id):
+    for a in attrs:
+        if a.get("id") == attr_id:
+            return a.get("raw", {}).get("value")
+    return None
+
+
+def disk_label(device):
+    return device.replace("/dev/", "").replace("/", "_")
+
+
+def write_metrics(devices):
+    lines = [
+        "# HELP smartmon_health_passed SMART overall health assessment (1=passed, 0=failed)",
+        "# TYPE smartmon_health_passed gauge",
+        "# HELP smartmon_temperature_celsius Drive temperature in Celsius",
+        "# TYPE smartmon_temperature_celsius gauge",
+        "# HELP smartmon_power_on_hours Hours the drive has been powered on",
+        "# TYPE smartmon_power_on_hours counter",
+        "# HELP smartmon_reallocated_sectors_total Number of reallocated sectors",
+        "# TYPE smartmon_reallocated_sectors_total counter",
+        "# HELP smartmon_pending_sectors Current pending sector count",
+        "# TYPE smartmon_pending_sectors gauge",
+        "# HELP smartmon_uncorrectable_errors_total Uncorrectable error count",
+        "# TYPE smartmon_uncorrectable_errors_total counter",
+    ]
+
+    for device in devices:
+        data = get_smart_data(device)
+        if data is None:
+            continue
+
+        lbl = f'disk="{disk_label(device)}"'
+
+        health = data.get("smart_status", {}).get("passed")
+        if health is not None:
+            lines.append(f'smartmon_health_passed{{{lbl}}} {1 if health else 0}')
+
+        temp = data.get("temperature", {}).get("current")
+        attrs = data.get("ata_smart_attributes", {}).get("table", [])
+        if temp is None:
+            temp = attr_raw(attrs, 194)
+        if temp is not None:
+            lines.append(f'smartmon_temperature_celsius{{{lbl}}} {temp}')
+
+        poh = attr_raw(attrs, 9)
+        if poh is not None:
+            lines.append(f'smartmon_power_on_hours{{{lbl}}} {poh}')
+
+        rs = attr_raw(attrs, 5)
+        if rs is not None:
+            lines.append(f'smartmon_reallocated_sectors_total{{{lbl}}} {rs}')
+
+        ps = attr_raw(attrs, 197)
+        if ps is not None:
+            lines.append(f'smartmon_pending_sectors{{{lbl}}} {ps}')
+
+        ue = attr_raw(attrs, 198)
+        if ue is not None:
+            lines.append(f'smartmon_uncorrectable_errors_total{{{lbl}}} {ue}')
+
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    os.makedirs(TEXTFILE_DIR, exist_ok=True)
+
+    devices = get_devices()
+    if not devices:
+        with open(OUTPUT_FILE, "w") as f:
+            f.write("# No SMART devices found\n")
+        return
+
+    content = write_metrics(devices)
+
+    tmp = OUTPUT_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(content)
+    os.rename(tmp, OUTPUT_FILE)
+
+
+if __name__ == "__main__":
+    main()

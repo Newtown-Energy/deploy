@@ -11,8 +11,9 @@ set -euo pipefail
 #   uninstall  Remove victoria-metrics
 #
 # Required env vars for install (set via inventory hostvars, passed by runcible):
-#   VICTORIA_METRICS_USERNAME  - HTTP basic auth username
-#   VICTORIA_METRICS_PASSWORD  - HTTP basic auth password
+#   VICTORIA_METRICS_USERNAME   - HTTP basic auth username
+#   VICTORIA_METRICS_PASSWORD   - HTTP basic auth password
+#   VICTORIA_METRICS_RETENTION  - retention period (e.g. 3d, 1, 12) default: 1 month
 
 # Decode rexer base64-encoded LC_* environment variables in place
 _decode_rexer_env() {
@@ -65,13 +66,17 @@ _wait_for_victoria_metrics() {
 install() {
     local USERNAME="${LC_VICTORIA_METRICS_USERNAME:?LC_VICTORIA_METRICS_USERNAME must be set}"
     local PASSWORD="${LC_VICTORIA_METRICS_PASSWORD:?LC_VICTORIA_METRICS_PASSWORD must be set}"
+    local RETENTION="${LC_VICTORIA_METRICS_RETENTION:-1}"
 
     echo "Installing victoria-metrics..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" victoria-metrics
 
     echo "Configuring victoria-metrics..."
-    sed -i "s|^LISTEN_ADDR=.*|LISTEN_ADDR=:8428|" /etc/victoria-metrics/victoria-metrics.env
-    sed -i "s|^VM_HTTP_USERNAME=.*|VM_HTTP_USERNAME=${USERNAME}|" /etc/victoria-metrics/victoria-metrics.env
+    cat > /etc/victoria-metrics/victoria-metrics.env <<EOF
+LISTEN_ADDR=:8428
+VM_HTTP_USERNAME=${USERNAME}
+RETENTION_PERIOD=${RETENTION}
+EOF
 
     echo -n "${PASSWORD}" > /etc/victoria-metrics/http-password
     chmod 640 /etc/victoria-metrics/http-password

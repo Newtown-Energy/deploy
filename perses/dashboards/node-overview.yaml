@@ -357,6 +357,92 @@ spec:
                   query: 'rate(node_context_switches_total{host=~"$host"}[5m])'
                   seriesNameFormat: "{{host}}"
 
+    drive_health:
+      kind: Panel
+      spec:
+        display:
+          name: "Drive Health"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'smartmon_health_passed{host=~"$host"}'
+                  seriesNameFormat: "{{host}} {{disk}}"
+
+    drive_temperature:
+      kind: Panel
+      spec:
+        display:
+          name: "Drive Temperature"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'smartmon_temperature_celsius{host=~"$host"}'
+                  seriesNameFormat: "{{host}} {{disk}}"
+
+    drive_errors:
+      kind: Panel
+      spec:
+        display:
+          name: "Drive Errors"
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend:
+              position: bottom
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'smartmon_reallocated_sectors_total{host=~"$host"}'
+                  seriesNameFormat: "{{host}} {{disk}} reallocated"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'smartmon_pending_sectors{host=~"$host"}'
+                  seriesNameFormat: "{{host}} {{disk}} pending"
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  datasource:
+                    kind: PrometheusDatasource
+                    name: victoria-metrics
+                  query: 'smartmon_uncorrectable_errors_total{host=~"$host"}'
+                  seriesNameFormat: "{{host}} {{disk}} uncorrectable"
+
   layouts:
     - kind: Grid
       spec:
@@ -433,3 +519,21 @@ spec:
             height: 8
             content:
               $ref: "#/spec/panels/context_switches"
+          - x: 0
+            y: 48
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/drive_health"
+          - x: 8
+            y: 48
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/drive_temperature"
+          - x: 16
+            y: 48
+            width: 8
+            height: 8
+            content:
+              $ref: "#/spec/panels/drive_errors"

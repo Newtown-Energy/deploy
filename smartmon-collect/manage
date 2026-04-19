@@ -1,0 +1,68 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage smartmon-collect: SMART metric collection for node_exporter textfile collector
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install smartmontools, collection script, and systemd timer
+#   uninstall  Remove smartmon-collect
+
+TEXTFILE_DIR="/var/lib/prometheus/node-exporter"
+NODE_EXPORTER_DEFAULT="/etc/default/prometheus-node-exporter"
+
+install() {
+    echo "Installing smartmontools..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o Dpkg::Options::="--force-confold" smartmontools
+
+    echo "Installing collection script..."
+    cp "$(dirname "$0")/smartmon-collect" /usr/local/bin/smartmon-collect
+    chmod 755 /usr/local/bin/smartmon-collect
+
+    echo "Installing systemd units..."
+    cp "$(dirname "$0")/smartmon-collect.service" /etc/systemd/system/
+    cp "$(dirname "$0")/smartmon-collect.timer" /etc/systemd/system/
+
+    echo "Ensuring textfile directory exists..."
+    mkdir -p "$TEXTFILE_DIR"
+
+    echo "Configuring node_exporter textfile collector..."
+    if [[ -f "$NODE_EXPORTER_DEFAULT" ]]; then
+        if ! grep -q 'collector.textfile.directory' "$NODE_EXPORTER_DEFAULT"; then
+            sed -i "s|^ARGS=\"\(.*\)\"|ARGS=\"\1 --collector.textfile.directory=${TEXTFILE_DIR}\"|" \
+                "$NODE_EXPORTER_DEFAULT"
+            systemctl restart prometheus-node-exporter
+        fi
+    fi
+
+    echo "Enabling and starting timer..."
+    systemctl daemon-reload
+    systemctl enable --now smartmon-collect.timer
+
+    echo "Running initial collection..."
+    systemctl start smartmon-collect.service
+
+    echo "Done."
+}
+
+uninstall() {
+    echo "Removing smartmon-collect..."
+    systemctl stop smartmon-collect.timer || true
+    systemctl disable smartmon-collect.timer || true
+    rm -f /etc/systemd/system/smartmon-collect.service
+    rm -f /etc/systemd/system/smartmon-collect.timer
+    rm -f /usr/local/bin/smartmon-collect
+    rm -f "${TEXTFILE_DIR}/smartmon.prom"
+    systemctl daemon-reload
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)   install ;;
+    uninstall) uninstall ;;
+    *)
+        echo "Usage: manage <install|uninstall>"
+        exit 1
+        ;;
+esac

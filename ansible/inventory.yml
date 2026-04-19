@@ -14,6 +14,7 @@ all:
           perses_admin_password_cmd: npass box/newtown.energy/perses | head -n 1
           victoria_metrics_username_cmd: npass kv username box/newtown.energy/victoria-metrics
           victoria_metrics_password_cmd: npass box/newtown.energy/victoria-metrics | head -n 1
+          victoria_metrics_retention: 3d
           victoria_metrics_url: http://newtownenergy.com:8428/api/v1/write
         bromine.newtown:
           ansible_host: bromine.newtown

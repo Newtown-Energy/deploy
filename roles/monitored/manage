@@ -20,8 +20,14 @@ case "$ACTION" in
 
         echo "Installing vmagent on $HOST..."
         rexer "$HOST" "$DEPLOY_DIR/vmagent/manage" install
+
+        echo "Installing smartmon-collect on $HOST..."
+        rexer "$HOST" "$DEPLOY_DIR/smartmon-collect/manage" install
         ;;
     uninstall)
+        echo "Uninstalling smartmon-collect from $HOST..."
+        rexer "$HOST" "$DEPLOY_DIR/smartmon-collect/manage" uninstall
+
         echo "Uninstalling vmagent from $HOST..."
         rexer "$HOST" "$DEPLOY_DIR/vmagent/manage" uninstall
 

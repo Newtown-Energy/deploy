@@ -1,0 +1,7 @@
+[Unit]
+Description=Collect SMART metrics for node_exporter textfile collector
+After=smartmontools.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/smartmon-collect

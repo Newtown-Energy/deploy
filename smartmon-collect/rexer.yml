@@ -1,0 +1,6 @@
+sudo: true
+include:
+  - manage
+  - smartmon-collect
+  - smartmon-collect.service
+  - smartmon-collect.timer
