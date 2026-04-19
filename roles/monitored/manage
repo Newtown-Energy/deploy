@@ -19,17 +19,17 @@ case "$ACTION" in
         rexer --sudo "$HOST" -- apt-get install -y prometheus-node-exporter
 
         echo "Installing vmagent on $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/vmagent/manage" install
+        rexer "$HOST" "$DEPLOY_DIR/services/vmagent/manage" install
 
         echo "Installing smartmon-collect on $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/monitoring-collectors/smartmon-collect/manage" install
+        rexer "$HOST" "$DEPLOY_DIR/services/monitoring-collectors/smartmon-collect/manage" install
         ;;
     uninstall)
         echo "Uninstalling smartmon-collect from $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/monitoring-collectors/smartmon-collect/manage" uninstall
+        rexer "$HOST" "$DEPLOY_DIR/services/monitoring-collectors/smartmon-collect/manage" uninstall
 
         echo "Uninstalling vmagent from $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/vmagent/manage" uninstall
+        rexer "$HOST" "$DEPLOY_DIR/services/vmagent/manage" uninstall
 
         echo "Removing prometheus-node-exporter from $HOST..."
         rexer --sudo "$HOST" -- apt-get remove -y prometheus-node-exporter

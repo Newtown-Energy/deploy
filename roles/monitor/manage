@@ -16,17 +16,17 @@ DEPLOY_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 case "$ACTION" in
     install)
         echo "Installing victoria-metrics on $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/victoria-metrics/manage" install
+        rexer "$HOST" "$DEPLOY_DIR/services/victoria-metrics/manage" install
 
         echo "Installing perses on $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/perses/manage" install
+        rexer "$HOST" "$DEPLOY_DIR/services/perses/manage" install
         ;;
     uninstall)
         echo "Uninstalling perses from $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/perses/manage" uninstall
+        rexer "$HOST" "$DEPLOY_DIR/services/perses/manage" uninstall
 
         echo "Uninstalling victoria-metrics from $HOST..."
-        rexer "$HOST" "$DEPLOY_DIR/victoria-metrics/manage" uninstall
+        rexer "$HOST" "$DEPLOY_DIR/services/victoria-metrics/manage" uninstall
         ;;
     *)
         echo "Usage: manage <install|uninstall>"
