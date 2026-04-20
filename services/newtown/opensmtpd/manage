@@ -1,0 +1,134 @@
+#!/bin/bash
+set -euo pipefail
+
+# Manage newtown-opensmtpd: SMTP relay listening on VPN and loopback
+#
+# Usage: manage <command>
+#
+# Commands:
+#   install    Install/configure opensmtpd
+#   uninstall  Remove configuration and stop opensmtpd
+#   test       Send test emails and print mailsac.com inbox URL
+#   status     Show opensmtpd status; print recent logs if not running
+#
+# Required env vars (set via inventory hostvars, passed by runcible):
+#   OPENSMTPD_MXROUTE_PASSWORD    - MXroute SMTP password
+#   OPENSMTPD_ZEPTOMAIL_PASSWORD  - ZeptoMail API key
+#   OPENSMTPD_NEWTOWNENERGY_FROM  - newline-separated allowed @newtownenergy.com senders
+#   OPENSMTPD_NEWTOWN_ENERGY_FROM - newline-separated allowed @newtown.energy senders
+#   OPENSMTPD_ZEPTOMAIL_PORT      - ZeptoMail SMTP port (default: 587)
+
+# Decode rexer base64-encoded LC_* environment variables in place
+_decode_rexer_env() {
+    for var in $(compgen -v LC_); do
+        local val="${!var}"
+        if [[ "$val" == _b64:* ]]; then
+            export "$var"="$(echo "${val#_b64:}" | base64 -d)"
+        fi
+    done
+}
+_decode_rexer_env
+
+install() {
+    local MXROUTE_PASSWORD="${LC_OPENSMTPD_MXROUTE_PASSWORD:?LC_OPENSMTPD_MXROUTE_PASSWORD must be set}"
+    local ZEPTOMAIL_PASSWORD="${LC_OPENSMTPD_ZEPTOMAIL_PASSWORD:?LC_OPENSMTPD_ZEPTOMAIL_PASSWORD must be set}"
+    local NEWTOWNENERGY_FROM="${LC_OPENSMTPD_NEWTOWNENERGY_FROM:?LC_OPENSMTPD_NEWTOWNENERGY_FROM must be set}"
+    local NEWTOWN_ENERGY_FROM="${LC_OPENSMTPD_NEWTOWN_ENERGY_FROM:?LC_OPENSMTPD_NEWTOWN_ENERGY_FROM must be set}"
+    local ZEPTOMAIL_PORT="${LC_OPENSMTPD_ZEPTOMAIL_PORT:-587}"
+
+    # Refuse to install if newtown-msmtp is present — both provide mail-transport-agent
+    if dpkg -l newtown-msmtp 2>/dev/null | grep -q '^ii'; then
+        echo "ERROR: newtown-msmtp is installed and conflicts with opensmtpd." >&2
+        echo "       Remove it first: apt-get remove newtown-msmtp" >&2
+        exit 1
+    fi
+
+    echo "Installing opensmtpd..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y opensmtpd
+
+    mkdir -p /etc/smtpd
+
+    echo "Writing smtpd.conf..."
+    cat > /etc/smtpd.conf <<EOF
+listen on 127.0.0.1 port 587
+listen on 127.0.0.1 port 2525
+listen on 10.1.0.1 port 587
+listen on 10.1.0.1 port 2525
+
+table mxroute_secrets   file:/etc/smtpd/mxroute-secrets
+table zeptomail_secrets file:/etc/smtpd/zeptomail-secrets
+table newtownenergy_senders file:/etc/smtpd/newtownenergy-senders
+table newtown_energy_senders file:/etc/smtpd/newtown-energy-senders
+
+action "relay_mxroute"   relay host smtp+tls://mxroute@witcher.mxrouting.net:2525 auth <mxroute_secrets>
+action "relay_zeptomail" relay host smtp+tls://zeptomail@smtp.zeptomail.com:${ZEPTOMAIL_PORT} auth <zeptomail_secrets>
+
+match from local         mail-from <newtownenergy_senders> for any action "relay_mxroute"
+match from local         mail-from <newtown_energy_senders> for any action "relay_zeptomail"
+match from src 127.0.0.1/32 mail-from <newtownenergy_senders> for any action "relay_mxroute"
+match from src 127.0.0.1/32 mail-from <newtown_energy_senders> for any action "relay_zeptomail"
+match from src 10.1.0.0/24  mail-from <newtownenergy_senders> for any action "relay_mxroute"
+match from src 10.1.0.0/24  mail-from <newtown_energy_senders> for any action "relay_zeptomail"
+EOF
+    chmod 644 /etc/smtpd.conf
+
+    echo "Writing secrets..."
+    echo "mxroute do-not-reply@newtownenergy.com:${MXROUTE_PASSWORD}" > /etc/smtpd/mxroute-secrets
+    chmod 600 /etc/smtpd/mxroute-secrets
+    echo "zeptomail emailapikey:${ZEPTOMAIL_PASSWORD}" > /etc/smtpd/zeptomail-secrets
+    chmod 600 /etc/smtpd/zeptomail-secrets
+
+    echo "Writing sender tables..."
+    echo "${NEWTOWNENERGY_FROM}" > /etc/smtpd/newtownenergy-senders
+    chmod 644 /etc/smtpd/newtownenergy-senders
+    echo "${NEWTOWN_ENERGY_FROM}" > /etc/smtpd/newtown-energy-senders
+    chmod 644 /etc/smtpd/newtown-energy-senders
+
+    echo "Installing test-send..."
+    cp "$(dirname "$0")/test-send" /etc/smtpd/test-send
+    chmod 755 /etc/smtpd/test-send
+
+    echo "Enabling and starting opensmtpd..."
+    systemctl enable opensmtpd
+    systemctl restart opensmtpd
+
+    echo "Done."
+}
+
+status() {
+    systemctl status opensmtpd --no-pager || {
+        echo ""
+        echo "--- Recent logs ---"
+        journalctl -u opensmtpd -n 50 --no-pager
+    }
+}
+
+test() {
+    exec /etc/smtpd/test-send
+}
+
+uninstall() {
+    echo "Stopping and disabling opensmtpd..."
+    systemctl disable --now opensmtpd || true
+
+    echo "Removing configuration..."
+    rm -f /etc/smtpd.conf \
+          /etc/smtpd/mxroute-secrets \
+          /etc/smtpd/zeptomail-secrets \
+          /etc/smtpd/newtownenergy-senders \
+          /etc/smtpd/newtown-energy-senders \
+          /etc/smtpd/test-send
+
+    echo "Done."
+}
+
+case "${1:-}" in
+    install)   install ;;
+    uninstall) uninstall ;;
+    status)    status ;;
+    test)      test ;;
+    *)
+        echo "Usage: manage <install|uninstall|status|test>"
+        exit 1
+        ;;
+esac

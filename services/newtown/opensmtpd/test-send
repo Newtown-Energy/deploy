@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+
+# Send test emails via the local sendmail wrapper.
+# Prints a mailsac.com inbox URL to check delivery.
+
+RANDOM_ID=$(head -c 8 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8)
+TO="newtown-test-${RANDOM_ID}@mailsac.com"
+
+echo "Sending test emails to ${TO}..."
+
+printf "From: do-not-reply@newtownenergy.com\nTo: %s\nSubject: Test from do-not-reply\n\nTest email from do-not-reply@newtownenergy.com\n" "$TO" \
+    | /usr/sbin/sendmail -t
+echo "  do-not-reply@newtownenergy.com: sent (via MXroute)"
+
+printf "From: bot@newtownenergy.com\nTo: %s\nSubject: Test from bot\n\nTest email from bot@newtownenergy.com\n" "$TO" \
+    | /usr/sbin/sendmail -t
+echo "  bot@newtownenergy.com: sent (via MXroute)"
+
+printf "From: bot@newtown.energy\nTo: %s\nSubject: Test from bot@newtown.energy\n\nTest email from bot@newtown.energy\n" "$TO" \
+    | /usr/sbin/sendmail -t
+echo "  bot@newtown.energy: sent (via ZeptoMail)"
+
+echo ""
+echo "Inbox: https://mailsac.com/inbox/${TO}"

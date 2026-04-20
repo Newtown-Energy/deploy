@@ -21,6 +21,15 @@ all:
             - do-not-reply@newtownenergy.com
             - bot@newtownenergy.com
             - james@newtownenergy.com
+          opensmtpd_mxroute_password_cmd: npass do-not-reply@newtownenergy.com | head -n 1
+          opensmtpd_zeptomail_password_cmd: npass smtp.zeptomail.com | head -n 1
+          opensmtpd_zeptomail_port: 587
+          opensmtpd_newtownenergy_from:
+            - do-not-reply@newtownenergy.com
+            - bot@newtownenergy.com
+            - james@newtownenergy.com
+          opensmtpd_newtown_energy_from:
+            - bot@newtown.energy
         bromine.newtown:
           ansible_host: bromine.newtown
           ansible_user: root
@@ -38,7 +47,7 @@ base:
   children:
     internal:
 
-newtown-msmtp:
+newtown-sendmail:
   hosts:
     newtown
 

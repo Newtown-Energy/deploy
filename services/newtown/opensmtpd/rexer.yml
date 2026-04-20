@@ -1,0 +1,4 @@
+sudo: true
+include:
+  - manage
+  - test-send
